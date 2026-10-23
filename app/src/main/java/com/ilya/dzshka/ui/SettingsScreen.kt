@@ -56,6 +56,7 @@ fun SettingsScreen(push: (Route) -> Unit) {
                         }
                         OutlinedButton(onClick = { push(Route.Templates) }) { Text("Токены и названия") }
                         OutlinedButton(onClick = { push(Route.History) }) { Text("История") }
+                        OutlinedButton(onClick = { push(Route.Browser) }) { Text("🌐 Браузер") }
                     }
                     if (!d.link.active) Hint("Код для помощников ещё не задан — задай его в «Помощники».")
                 }

@@ -46,6 +46,7 @@ sealed interface Route {
     data object Channel : Route
     data object LinkSetup : Route
     data object Hw : Route
+    data object Browser : Route
     data class HwFor(val subjectId: String) : Route
 }
 
@@ -162,6 +163,7 @@ fun AppRoot(incoming: MutableState<Route?>) {
             Route.LinkSetup -> if (helper) pop() else LinkSetupScreen(onDone = pop)
             Route.Templates -> TemplatesScreen(onBack = pop)
             is Route.HwFor -> HwScreen(initialSubject = top.subjectId, onBack = pop)
+            Route.Browser -> BrowserScreen(onBack = pop, push = push)
             else -> pop()
         }
         return

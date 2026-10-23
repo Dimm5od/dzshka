@@ -285,6 +285,12 @@ fun HelperSettingsScreen(push: (Route) -> Unit) {
                     SwitchRow("Вибрация", r.vibrate, { v -> Store.update { it.copy(reminder = it.reminder.copy(vibrate = v)) } })
                 }
             }
+            item {
+                Section("Браузер") {
+                    Hint("Быстро найти что-то для ДЗ. Выдели текст на странице и нажми «В ДЗ» — он попадёт в новую запись.")
+                    OutlinedButton(onClick = { push(Route.Browser) }) { Text("🌐 Открыть браузер") }
+                }
+            }
             item { PermissionsSection() }
             item {
                 Section("Внешний вид") {
