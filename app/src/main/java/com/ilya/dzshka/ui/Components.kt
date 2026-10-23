@@ -30,12 +30,16 @@ val ACCENTS = listOf(
 )
 
 @Composable
-fun DzTheme(look: LookCfg, content: @Composable () -> Unit) {
-    val dark = when (look.theme) {
-        ThemeMode.SYSTEM -> isSystemInDarkTheme()
-        ThemeMode.LIGHT -> false
-        ThemeMode.DARK -> true
-    }
+fun isDark(look: LookCfg): Boolean = when (look.theme) {
+    ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    ThemeMode.LIGHT -> false
+    ThemeMode.DARK -> true
+}
+
+/** @param space ночная тема-космос: фон прозрачный (под ним рисуется космос), карточки полупрозрачные. */
+@Composable
+fun DzTheme(look: LookCfg, space: Boolean = false, content: @Composable () -> Unit) {
+    val dark = isDark(look)
     val ctx = LocalContext.current
     val accent = Color(look.accent)
     val scheme = when {
@@ -51,7 +55,20 @@ fun DzTheme(look: LookCfg, content: @Composable () -> Unit) {
             secondaryContainer = mix(accent, Color.White, 0.86f), onSecondaryContainer = Color(0xFF111111),
         )
     }
-    MaterialTheme(colorScheme = scheme, content = content)
+    val final = if (dark && space) scheme.copy(
+        background = Color.Transparent,
+        surface = Color(0x3308081A),
+        surfaceContainerLowest = Color(0x8C0B0C1E),
+        surfaceContainerLow = Color(0xB3131430),
+        surfaceContainer = Color(0xE00C0D20),
+        surfaceContainerHigh = Color(0xFF1B1C38),
+        surfaceContainerHighest = Color(0xFF26284A),
+        surfaceVariant = Color(0x99242650),
+        onSurface = Color(0xFFECEAFF),
+        onSurfaceVariant = Color(0xFFC3C0E0),
+        outline = Color(0xFF8E8AB5),
+    ) else scheme
+    MaterialTheme(colorScheme = final, content = content)
 }
 
 private fun mix(a: Color, b: Color, t: Float) = Color(

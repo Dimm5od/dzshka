@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,7 +34,7 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun ChannelScreen(push: (Route) -> Unit) {
+fun ChannelScreen(push: (Route) -> Unit, onBack: (() -> Unit)? = null) {
     val d by Store.data.collectAsState()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -61,7 +62,9 @@ fun ChannelScreen(push: (Route) -> Unit) {
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Канал") }, actions = {
+            TopAppBar(title = { Text("Канал") }, navigationIcon = {
+                if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") }
+            }, actions = {
                 IconButton(onClick = { load() }, enabled = !loading) { Icon(Icons.Default.Refresh, "Обновить") }
             })
         },
@@ -151,7 +154,7 @@ fun ChannelScreen(push: (Route) -> Unit) {
 }
 
 @Composable
-private fun ComposeDialog(title: String, initial: String, isFix: Boolean, onDismiss: () -> Unit) {
+internal fun ComposeDialog(title: String, initial: String, isFix: Boolean, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var text by remember { mutableStateOf(initial) }
@@ -193,4 +196,30 @@ private fun ComposeDialog(title: String, initial: String, isFix: Boolean, onDism
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Отмена") } },
     )
+}
+
+/** Канал на главной: название, «Написать», последние сообщения из приложения, «Весь канал». */
+@Composable
+fun ChannelHomeSection(d: AppData, push: (Route) -> Unit) {
+    var compose by remember { mutableStateOf(false) }
+    val v = d.viber
+    val ready = v.token.isNotBlank() && v.fromId.isNotBlank()
+    val fmt = remember { SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()) }
+    Section("📣 " + v.channelName.ifBlank { "Канал" }) {
+        if (!ready) Hint("Канал не подключён — вставь токен в «Настройки → Viber-канал».")
+        val posts = d.channelPosts.filter { !it.hidden }.take(3)
+        if (ready && posts.isEmpty()) Hint("Из приложения в канал пока ничего не уходило.")
+        posts.forEach { p ->
+            Column(Modifier.fillMaxWidth()) {
+                Text(fmt.format(Date(p.time)) + (if (p.photoUrl.isNotBlank()) " · 🖼" else "") + (if (p.author.isNotBlank()) " · ${p.author}" else ""),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                Text(p.text.ifBlank { "фото" }, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (ready) Button(onClick = { compose = true }) { Icon(Icons.Default.Edit, null); Spacer(Modifier.width(6.dp)); Text("Написать") }
+            OutlinedButton(onClick = { push(Route.Channel) }) { Text("Весь канал") }
+        }
+    }
+    if (compose) ComposeDialog("Написать в канал", "", isFix = false, onDismiss = { compose = false })
 }

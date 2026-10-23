@@ -21,7 +21,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 
 @Composable
-fun TestScreen(onBack: () -> Unit) {
+fun TestScreen(onBack: (() -> Unit)?) {
     val ctx = LocalContext.current
     val d by Store.data.collectAsState()
     val st by TestRun.state.collectAsState()

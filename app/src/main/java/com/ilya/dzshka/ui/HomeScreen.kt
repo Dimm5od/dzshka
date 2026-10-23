@@ -163,9 +163,23 @@ fun HomeScreen(push: (Route) -> Unit) {
                 }
             }
 
+            // канал — под ДЗ
+            item { ChannelHomeSection(d, push) }
+
             item {
                 val plan = remember(d, now) { Alarms.lastPlanned }
                 if (plan.isNotBlank()) Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { Hint("Дальше: $plan") }
+            }
+
+            // поиск — в самом низу, маленькой кнопкой
+            item {
+                Box(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp), contentAlignment = Alignment.Center) {
+                    FilledTonalButton(onClick = { push(Route.Browser) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                        modifier = Modifier.height(34.dp)) {
+                        Icon(Icons.Default.Search, null, Modifier.size(16.dp)); Spacer(Modifier.width(6.dp))
+                        Text("Поиск", style = MaterialTheme.typography.labelLarge)
+                    }
+                }
             }
         }
     }

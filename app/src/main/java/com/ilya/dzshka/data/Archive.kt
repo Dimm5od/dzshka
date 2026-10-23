@@ -11,13 +11,18 @@ object Archive {
         val day: LocalDate? get() = Sched.parseDate(rec.due) ?: Sched.parseDate(rec.lessonDate)
     }
 
-    fun merge(list: List<HwRecord>, add: List<HwRecord>): List<HwRecord> {
+    /** Сколько дней хранить ДЗ (2 месяца) — старое удаляется и с телефона, и с GitHub. */
+    const val KEEP_DAYS = 62
+
+    fun merge(list: List<HwRecord>, add: List<HwRecord>, today: LocalDate = LocalDate.now()): List<HwRecord> {
+        val cutoff = today.minusDays(KEEP_DAYS.toLong())
         val m = LinkedHashMap<String, HwRecord>()
         (list + add).forEach { r ->
             val old = m[r.id]
             if (old == null || r.updated >= old.updated) m[r.id] = r
         }
-        return m.values.sortedWith(compareBy({ it.lessonDate }, { it.subjectName })).takeLast(4000)
+        return m.values.filter { r -> (Sched.parseDate(r.lessonDate) ?: Sched.parseDate(r.due))?.let { it >= cutoff } ?: true }
+            .sortedWith(compareBy({ it.lessonDate }, { it.subjectName })).takeLast(4000)
     }
 
     fun put(vararg recs: HwRecord) {

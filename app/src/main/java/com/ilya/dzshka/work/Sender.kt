@@ -79,18 +79,31 @@ object Sender {
     private const val KEY_IDS = "ids"
     private const val KEY_MOMENT = "moment"
     private const val KEY_TEST = "test"
+    private val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     /** «🧪 в тест-канал»: отправить копии записей во второй канал. Очередь и отметки «отправлено» не меняются. */
     fun sendTest(ctx: Context, entries: List<HwEntry>, momentId: String) {
         val copies = entries.map { it.copy(id = newId(), status = EntryStatus.SENDING, error = "", photosPosted = emptyList(), textSent = false) }
         Store.update { it.copy(testQueue = it.testQueue + copies) }
         Store.saveNow()
-        val req = OneTimeWorkRequestBuilder<SendWorker>()
-            .setInputData(workDataOf(KEY_IDS to copies.map { it.id }.toTypedArray(), KEY_MOMENT to momentId, KEY_TEST to true))
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-            .build()
-        WorkManager.getInstance(ctx).enqueueUniqueWork("send-test", ExistingWorkPolicy.APPEND_OR_REPLACE, req)
+        val app = ctx.applicationContext
+        val ids = copies.map { it.id }
+        // сразу пробуем сами (как «тестовый пост»), WorkManager — только запасной путь, если нет связи
+        pool.execute {
+            try {
+                val sent = sendBlocking(momentId, ids, test = true)
+                dropTest(ids)
+                if (sent != null) Notif.result(app, true, sent)
+            } catch (e: Exception) {
+                if (offline(e)) scheduleWork(app, momentId, ids, test = true)
+                else {
+                    dropTest(ids)
+                    val msg = e.message ?: e.javaClass.simpleName
+                    Store.addHistory(SentRecord(text = "🧪 Тест-канал: не отправлено", ok = false, error = msg))
+                    Notif.result(app, false, "🧪 Тест-канал: $msg")
+                }
+            }
+        }
     }
 
     /** Убрать отправленные/сломанные тестовые копии и фото, которые больше никому не нужны. */
@@ -102,19 +115,48 @@ object Sender {
         Store.saveNow()
     }
 
-    fun enqueue(ctx: Context, momentId: String, ids: List<String>) {
-        Store.update { d ->
-            d.copy(queue = d.queue.map { if (it.id in ids) it.copy(status = EntryStatus.SENDING, error = "") else it })
-        }
+    private fun offline(e: Throwable) = e is IOException && e !is ViberException
+
+    /** Запасной путь: WorkManager дождётся связи и отправит сам. REPLACE — чтобы каждое нажатие начинало заново. */
+    private fun scheduleWork(app: Context, momentId: String, ids: List<String>, test: Boolean = false) {
+        val data = if (test) workDataOf(KEY_IDS to ids.toTypedArray(), KEY_MOMENT to momentId, KEY_TEST to true)
+            else workDataOf(KEY_IDS to ids.toTypedArray(), KEY_MOMENT to momentId)
         val req = OneTimeWorkRequestBuilder<SendWorker>()
-            .setInputData(workDataOf(KEY_IDS to ids.toTypedArray(), KEY_MOMENT to momentId))
+            .setInputData(data)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .setBackoffCriteria(BackoffPolicy.LINEAR, 20, TimeUnit.SECONDS)
             .build()
-        WorkManager.getInstance(ctx).enqueueUniqueWork("send", ExistingWorkPolicy.APPEND_OR_REPLACE, req)
+        WorkManager.getInstance(app).enqueueUniqueWork(if (test) "send-test" else "send", ExistingWorkPolicy.REPLACE, req)
     }
 
-    private fun waiting(d: AppData) = d.queue.filter { it.status != EntryStatus.SENDING && it.status != EntryStatus.APPROVAL }.map { it.id }
+    /** Отправить записи: сначала сразу сами, при отсутствии связи — через WorkManager. */
+    fun fire(ctx: Context, momentId: String, ids: List<String>) {
+        Store.update { d -> d.copy(queue = d.queue.map { if (it.id in ids) it.copy(status = EntryStatus.SENDING, error = "") else it }) }
+        Store.saveNow()
+        val app = ctx.applicationContext
+        pool.execute {
+            try {
+                val sent = sendBlocking(momentId, ids, test = false)
+                if (sent != null) Notif.result(app, true, sent)
+            } catch (e: Exception) {
+                val msg = e.message ?: e.javaClass.simpleName
+                if (offline(e)) {
+                    Store.update { d -> d.copy(queue = d.queue.map {
+                        if (it.id in ids) it.copy(status = EntryStatus.SENDING, error = "Нет связи, отправлю сам, когда появится. $msg") else it }) }
+                    Store.saveNow()
+                    scheduleWork(app, momentId, ids)
+                } else {
+                    Store.update { d -> d.copy(queue = d.queue.map {
+                        if (it.id in ids) it.copy(status = EntryStatus.FAILED, error = msg) else it }) }
+                    Store.addHistory(SentRecord(text = "Не отправлено" + if (ids.isNotEmpty()) " (${ids.size} шт.)" else "", ok = false, error = msg))
+                    Store.saveNow()
+                    Notif.result(app, false, msg)
+                }
+            }
+        }
+    }
+
+    private fun waiting(d: AppData) = d.queue.filter { it.status != EntryStatus.APPROVAL }.map { it.id }
 
     /** Кнопка «Отправить очередь». */
     fun sendQueue(ctx: Context) {
@@ -122,13 +164,13 @@ object Sender {
         val ids = waiting(d)
         if (ids.isEmpty()) return
         val m = Studio.queueMoment(d)
-        if (m.trigger == Trigger.ON_ADD) ids.forEach { enqueue(ctx, m.id, listOf(it)) } else enqueue(ctx, m.id, ids)
+        if (m.trigger == Trigger.ON_ADD) ids.forEach { fire(ctx, m.id, listOf(it)) } else fire(ctx, m.id, ids)
     }
 
     /** Отправить конкретные записи прямо сейчас. */
     fun sendNow(ctx: Context, ids: List<String>) {
         val m = Studio.nowMoment(Store.d)
-        if (m.trigger == Trigger.ON_ADD) ids.forEach { enqueue(ctx, m.id, listOf(it)) } else enqueue(ctx, m.id, ids)
+        if (m.trigger == Trigger.ON_ADD) ids.forEach { fire(ctx, m.id, listOf(it)) } else fire(ctx, m.id, ids)
     }
 
     /** Сработал момент по времени. */
@@ -137,8 +179,11 @@ object Sender {
         val m = d.moments.firstOrNull { it.id == momentId && it.enabled } ?: return
         val ids = if (m.hasHwSteps) waiting(d) else emptyList()
         if (ids.isEmpty() && m.steps.all { it.kind.usesEntries || it.onlyIfHw }) return
-        enqueue(ctx, m.id, ids)
+        fire(ctx, m.id, ids)
     }
+
+    /** Совместимость: старый вызов enqueue теперь просто fire. */
+    fun enqueue(ctx: Context, momentId: String, ids: List<String>) = fire(ctx, momentId, ids)
 
     class SendWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
         override fun doWork(): Result {
@@ -146,52 +191,36 @@ object Sender {
             val ids = inputData.getStringArray(KEY_IDS)?.toList() ?: emptyList()
             val momentId = inputData.getString(KEY_MOMENT) ?: ""
             val test = inputData.getBoolean(KEY_TEST, false)
-            if (test) return try {
-                val sentText = run(momentId, ids, true)
-                dropTest(ids)
-                if (sentText != null) Notif.result(applicationContext, true, sentText)
-                Result.success()
-            } catch (e: Exception) {
-                val msg = e.message ?: e.javaClass.simpleName
-                if (e is IOException && e !is ViberException && runAttemptCount < 3) Result.retry()
-                else {
-                    dropTest(ids)
-                    Store.addHistory(SentRecord(text = "🧪 Тест-канал: не отправлено", ok = false, error = msg))
-                    Notif.result(applicationContext, false, "🧪 Тест-канал: $msg")
-                    Result.failure()
-                }
-            }
             return try {
-                val sentText = run(momentId, ids, false)
+                val sentText = sendBlocking(momentId, ids, test)
+                if (test) dropTest(ids)
                 if (sentText != null) Notif.result(applicationContext, true, sentText)
                 Result.success()
             } catch (e: Exception) {
                 val msg = e.message ?: e.javaClass.simpleName
-                // нет связи — пробуем снова сами (примерно сутки), ДЗ не теряется
-                val retry = e is IOException && e !is ViberException && runAttemptCount < 12
-                Store.update { d ->
-                    d.copy(queue = d.queue.map {
-                        if (it.id in ids) it.copy(
-                            status = if (retry) EntryStatus.SENDING else EntryStatus.FAILED,
-                            error = if (retry) "Нет связи, отправлю сам, когда появится. $msg" else msg,
-                        ) else it
-                    })
-                }
-                Store.saveNow()
-                if (retry) Result.retry() else {
-                    Store.addHistory(SentRecord(text = "Не отправлено" + if (ids.isNotEmpty()) " (${ids.size} шт.)" else "", ok = false, error = msg))
-                    Notif.result(applicationContext, false, msg)
+                if (offline(e) && runAttemptCount < 20) Result.retry()
+                else {
+                    if (test) {
+                        dropTest(ids)
+                        Store.addHistory(SentRecord(text = "🧪 Тест-канал: не отправлено", ok = false, error = msg))
+                        Notif.result(applicationContext, false, "🧪 Тест-канал: $msg")
+                    } else {
+                        Store.update { d -> d.copy(queue = d.queue.map { if (it.id in ids) it.copy(status = EntryStatus.FAILED, error = msg) else it }) }
+                        Store.addHistory(SentRecord(text = "Не отправлено" + if (ids.isNotEmpty()) " (${ids.size} шт.)" else "", ok = false, error = msg))
+                        Store.saveNow()
+                        Notif.result(applicationContext, false, msg)
+                    }
                     Result.failure()
                 }
             }
         }
 
-        private var test = false
-        private fun cur(id: String): HwEntry? = (if (test) Store.d.testQueue else Store.d.queue).firstOrNull { it.id == id }
+        override fun getForegroundInfo(): ForegroundInfo = Notif.sendingForeground(applicationContext)
+    }
 
-        /** @return текст для уведомления или null, если отправлять было нечего */
-        private fun run(momentId: String, ids: List<String>, test: Boolean): String? {
-            this.test = test
+    /** @return текст для уведомления или null, если отправлять было нечего */
+    private fun sendBlocking(momentId: String, ids: List<String>, test: Boolean): String? {
+            fun cur(id: String): HwEntry? = (if (test) Store.d.testQueue else Store.d.queue).firstOrNull { it.id == id }
             val d = Store.d
             val v = if (test) d.testViber else d.viber
             val where = if (test) "Настройки → 🧪 Тест-канал" else "Настройки → Viber"
@@ -264,8 +293,5 @@ object Sender {
             ids.forEach { Store.removeEntry(it, Store.d.send.deleteSentPhotos) }
             Store.saveNow()
             return summary.ifBlank { null }
-        }
-
-        override fun getForegroundInfo(): ForegroundInfo = Notif.sendingForeground(applicationContext)
     }
 }

@@ -1,24 +1,22 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
-
 package com.ilya.dzshka.ui
 
 import android.annotation.SuppressLint
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
-import android.net.Uri
-import android.os.Bundle
-import android.view.ViewGroup
-import android.view.inputmethod.InputMethodManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -29,254 +27,252 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.ilya.dzshka.Route
-import org.json.JSONTokener
 
-/** Поисковики для строки браузера. */
-enum class SearchEngine(val label: String, val home: String, private val query: String) {
-    GOOGLE("Google", "https://www.google.com/", "https://www.google.com/search?q="),
-    DUCK("DuckDuckGo", "https://duckduckgo.com/", "https://duckduckgo.com/?q="),
-    BING("Bing", "https://www.bing.com/", "https://www.bing.com/search?q="),
-    WIKI("Википедия", "https://ru.wikipedia.org/", "https://ru.wikipedia.org/w/index.php?search=");
-
-    fun search(q: String) = query + Uri.encode(q)
+/** Поисковики. home — стартовая страница, q — адрес поиска. */
+enum class SearchEngine(val title: String, val emoji: String, val home: String, val q: String) {
+    GOOGLE("Google", "🔎", "https://www.google.com/", "https://www.google.com/search?q="),
+    WIKI("Википедия", "📚", "https://ru.wikipedia.org/", "https://ru.wikipedia.org/w/index.php?search="),
+    DDG("DuckDuckGo", "🦆", "https://duckduckgo.com/", "https://duckduckgo.com/?q="),
+    BING("Bing", "🅱", "https://www.bing.com/", "https://www.bing.com/search?q="),
 }
 
-/** Что ввели в строку: адрес сайта или поисковый запрос. */
+/** Что ввели в строку: адрес сайта открываем, слова — ищем. */
 object BrowserInput {
-    private val scheme = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://.*")
-    private val host = Regex("^([\\p{L}0-9-]+\\.)+\\p{L}{2,}(:\\d+)?(/.*)?$")
-
-    fun toUrl(raw: String, engine: SearchEngine): String {
-        val s = raw.trim()
-        if (s.isEmpty()) return engine.home
-        if (s.contains(' ')) return engine.search(s)
-        if (scheme.matches(s)) return s
-        if (host.matches(s)) return "https://$s"
-        return engine.search(s)
+    fun toUrl(input: String, e: SearchEngine): String {
+        val q = input.trim()
+        return when {
+            q.isEmpty() -> e.home
+            q.startsWith("http://") || q.startsWith("https://") -> q
+            q.contains('.') && !q.contains(' ') -> "https://$q"
+            else -> e.q + android.net.Uri.encode(q)
+        }
     }
 }
 
-/** Браузер живёт между заходами: история и открытая страница возвращаются, когда снова открываешь его. */
-private object BrowserMem {
-    var state: Bundle? = null
-}
+private val ENGINES = SearchEngine.entries
 
-private const val PREFS = "browser"
-private const val KEY_ENGINE = "engine"
+private data class Quick(val label: String, val emoji: String, val url: String)
 
-private fun loadEngine(ctx: Context): SearchEngine {
-    val name = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_ENGINE, null)
-    return SearchEngine.entries.firstOrNull { it.name == name } ?: SearchEngine.GOOGLE
-}
+private val QUICK = listOf(
+    Quick("Википедия", "📚", "https://ru.wikipedia.org/"),
+    Quick("Переводчик", "🌐", "https://translate.google.com/"),
+    Quick("Калькулятор", "🧮", "https://www.google.com/search?q=calculator"),
+    Quick("Карты", "🗺", "https://www.google.com/maps"),
+    Quick("Словарь", "📖", "https://gramota.ru/"),
+    Quick("YouTube", "▶", "https://m.youtube.com/"),
+)
 
-private fun saveEngine(ctx: Context, e: SearchEngine) {
-    ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_ENGINE, e.name).apply()
-}
-
-private fun openOutside(ctx: Context, uri: Uri) {
-    runCatching {
-        ctx.startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    }.onFailure { Toast.makeText(ctx, "Нечем открыть", Toast.LENGTH_SHORT).show() }
-}
-
+/** Быстрый браузер для поиска: своя стартовая страница (открывается мгновенно), строка поиска, полоска загрузки. */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun BrowserScreen(onBack: () -> Unit, push: (Route) -> Unit) {
-    val ctx = LocalContext.current
+fun BrowserScreen(onBack: (() -> Unit)? = null, push: ((com.ilya.dzshka.Route) -> Unit)? = null) {
+    val cs = MaterialTheme.colorScheme
     val focus = LocalFocusManager.current
-    var engine by remember { mutableStateOf(loadEngine(ctx)) }
-    var field by remember { mutableStateOf(TextFieldValue("")) }
+    var engine by remember { mutableIntStateOf(0) }
+    var text by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf(false) }
-    var pageUrl by remember { mutableStateOf("") }
-    var progress by remember { mutableIntStateOf(0) }
-    var canBack by remember { mutableStateOf(false) }
-    var canForward by remember { mutableStateOf(false) }
+    var onStart by remember { mutableStateOf(true) }   // стартовая страница вместо сайта
+    var progress by remember { mutableIntStateOf(100) }
     var title by remember { mutableStateOf("") }
-    var menu by remember { mutableStateOf(false) }
+    var url by remember { mutableStateOf("") }
+    var canBack by remember { mutableStateOf(false) }
+    var canFwd by remember { mutableStateOf(false) }
+    var web by remember { mutableStateOf<WebView?>(null) }
+    val fr = remember { FocusRequester() }
 
-    val web = remember {
-        WebView(ctx).apply {
-            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            settings.apply {
-                javaScriptEnabled = true
-                domStorageEnabled = true
-                loadWithOverviewMode = true
-                useWideViewPort = true
-                builtInZoomControls = true
-                displayZoomControls = false
-                allowFileAccess = false
-                allowContentAccess = false
-                mediaPlaybackRequiresUserGesture = true
-                setSupportMultipleWindows(false)
-            }
-            fun sync(v: WebView) {
-                canBack = v.canGoBack()
-                canForward = v.canGoForward()
-                v.url?.let { pageUrl = it }
-            }
-            webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                    val u = request.url
-                    return when (u.scheme?.lowercase()) {
-                        "http", "https", "about", "data", "blob" -> false
-                        "intent" -> {
-                            // ссылки вида intent://… — открываем запасной адрес сайта, если он есть
-                            runCatching { Intent.parseUri(u.toString(), Intent.URI_INTENT_SCHEME).getStringExtra("browser_fallback_url") }
-                                .getOrNull()?.takeIf { it.startsWith("http") }?.let { view.loadUrl(it) }
-                            true
-                        }
-                        else -> { openOutside(view.context, u); true } // tel:, mailto:, market: и т. п.
-                    }
-                }
-
-                override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-                    url?.let { pageUrl = it }
-                    sync(view)
-                }
-
-                override fun onPageFinished(view: WebView, url: String?) = sync(view)
-                override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) = sync(view)
-            }
-            webChromeClient = object : WebChromeClient() {
-                override fun onProgressChanged(view: WebView, newProgress: Int) { progress = newProgress }
-                override fun onReceivedTitle(view: WebView, t: String?) { title = t.orEmpty() }
-            }
-            setDownloadListener { url, _, _, _, _ -> openOutside(context, Uri.parse(url)) }
-
-            val saved = BrowserMem.state
-            if (saved == null || restoreState(saved) == null) loadUrl(engine.home)
-        }
-    }
-
-    DisposableEffect(web) {
-        web.onResume()
-        onDispose {
-            BrowserMem.state = Bundle().also { web.saveState(it) }
-            web.stopLoading()
-            web.destroy()
-        }
-    }
-
-    fun hideKeyboard() {
+    fun open(input: String) {
+        if (input.isBlank()) return
+        onStart = false
+        web?.loadUrl(BrowserInput.toUrl(input, ENGINES[engine]))
         focus.clearFocus()
-        ctx.getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(web.windowToken, 0)
     }
 
-    fun go(raw: String) {
-        web.loadUrl(BrowserInput.toUrl(raw, engine))
-        editing = false
-        hideKeyboard()
-        web.requestFocus()
-    }
-
+    /** «В ДЗ»: выделенный на странице текст (или название и ссылка) — в новую запись ДЗ. */
     fun toHw() {
-        // выделенный текст → в новое ДЗ; ничего не выделено — ссылка на страницу
-        web.evaluateJavascript("(function(){return window.getSelection?window.getSelection().toString():''})()") { res ->
-            val sel = runCatching { JSONTokener(res).nextValue() as? String }.getOrNull().orEmpty().trim()
-            val text = sel.ifEmpty { web.url.orEmpty() }
-            if (sel.isEmpty()) Toast.makeText(ctx, "Ничего не выделено — вставил ссылку. Чтобы взять текст, выдели его на странице.", Toast.LENGTH_LONG).show()
-            push(Route.Entry(sharedText = text))
+        val w = web ?: return
+        w.evaluateJavascript("(function(){return window.getSelection?window.getSelection().toString():''})()") { res ->
+            val sel = runCatching { org.json.JSONTokener(res).nextValue() as? String }.getOrNull().orEmpty().trim()
+            val text = sel.ifBlank { listOf(title, url).filter { it.isNotBlank() }.joinToString("\n") }
+            push?.invoke(com.ilya.dzshka.Route.Entry(sharedText = text))
         }
     }
 
-    BackHandler {
+    BackHandler(enabled = !onStart || onBack != null) {
         when {
-            editing -> { editing = false; hideKeyboard() }
-            web.canGoBack() -> web.goBack()
-            else -> onBack()
+            !onStart && canBack -> web?.goBack()
+            !onStart -> { onStart = true; text = "" }
+            else -> onBack?.invoke()
         }
     }
+    DisposableEffect(Unit) { onDispose { web?.apply { stopLoading(); destroy() }; web = null } }
 
-    Scaffold(
-        topBar = {
-            Surface(tonalElevation = 3.dp) {
-                Column(Modifier.statusBarsPadding()) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onBack) { Icon(Icons.Default.Close, "Закрыть браузер") }
-                        OutlinedTextField(
-                            value = if (editing) field else TextFieldValue(pageUrl.removePrefix("https://").removePrefix("www.").trimEnd('/')),
-                            onValueChange = { field = it },
-                            placeholder = { Text("Поиск или адрес") },
-                            singleLine = true,
-                            textStyle = MaterialTheme.typography.bodyMedium,
-                            leadingIcon = { Icon(Icons.Default.Search, null) },
-                            trailingIcon = {
-                                if (editing && field.text.isNotEmpty()) IconButton(onClick = { field = TextFieldValue("") }) { Icon(Icons.Default.Clear, "Стереть") }
-                            },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
-                            keyboardActions = KeyboardActions(onGo = { go(field.text) }),
-                            modifier = Modifier.weight(1f).onFocusChanged { f ->
-                                if (f.isFocused && !editing) {
-                                    editing = true
-                                    field = TextFieldValue(pageUrl, TextRange(0, pageUrl.length))
-                                }
-                            },
-                        )
-                        Box {
-                            IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Меню") }
-                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                DropdownMenuItem(text = { Text("Скопировать ссылку") }, leadingIcon = { Icon(Icons.Default.ContentCopy, null) }, onClick = {
-                                    menu = false
-                                    ctx.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(title, web.url.orEmpty()))
-                                    Toast.makeText(ctx, "Ссылка скопирована", Toast.LENGTH_SHORT).show()
-                                })
-                                DropdownMenuItem(text = { Text("Поделиться") }, leadingIcon = { Icon(Icons.Default.Share, null) }, onClick = {
-                                    menu = false
-                                    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, web.url.orEmpty())
-                                    runCatching { ctx.startActivity(Intent.createChooser(send, "Поделиться ссылкой")) }
-                                })
-                                DropdownMenuItem(text = { Text("Открыть в браузере телефона") }, leadingIcon = { Icon(Icons.Default.OpenInBrowser, null) }, onClick = {
-                                    menu = false
-                                    web.url?.let { openOutside(ctx, Uri.parse(it)) }
-                                })
-                                HorizontalDivider()
-                                Text("Искать через", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
-                                SearchEngine.entries.forEach { e ->
-                                    DropdownMenuItem(
-                                        text = { Text(e.label) },
-                                        leadingIcon = { RadioButton(selected = e == engine, onClick = null) },
-                                        onClick = { engine = e; saveEngine(ctx, e); menu = false },
-                                    )
-                                }
+    Scaffold(topBar = {
+        Column(Modifier.background(cs.surface).statusBarsPadding()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Закрыть") }
+                // строка поиска-пилюля (на стартовой странице она своя, большая)
+                if (onStart) Spacer(Modifier.weight(1f).height(46.dp)) else Row(
+                    Modifier.weight(1f).height(46.dp).clip(RoundedCornerShape(23.dp)).background(cs.surfaceContainerHighest)
+                        .padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(if (onStart || editing) ENGINES[engine].emoji else "🔒", Modifier.padding(end = 8.dp))
+                    BasicTextField(
+                        value = if (editing || onStart) text else (title.ifBlank { url }),
+                        onValueChange = { text = it },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = cs.onSurface),
+                        cursorBrush = SolidColor(cs.primary),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                        keyboardActions = KeyboardActions(onGo = { open(text) }),
+                        modifier = Modifier.weight(1f).focusRequester(fr).onFocusChanged {
+                            if (it.isFocused && !editing) { editing = true; if (!onStart) text = url }
+                            if (!it.isFocused) editing = false
+                        },
+                        decorationBox = { inner ->
+                            Box(contentAlignment = Alignment.CenterStart) {
+                                if ((editing || onStart) && text.isEmpty()) Text("Найти или ввести адрес", color = cs.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                                inner()
+                            }
+                        },
+                    )
+                    if (editing && text.isNotEmpty()) Icon(Icons.Default.Close, "Очистить", Modifier.size(20.dp).clickable { text = "" }, tint = cs.onSurfaceVariant)
+                }
+                if (!onStart) IconButton(onClick = { if (progress < 100) web?.stopLoading() else web?.reload() }) {
+                    Icon(if (progress < 100) Icons.Default.Close else Icons.Default.Refresh, if (progress < 100) "Стоп" else "Обновить")
+                }
+            }
+            // полоска загрузки
+            AnimatedVisibility(!onStart && progress < 100) {
+                LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth().height(2.dp))
+            }
+        }
+    }, bottomBar = {
+        if (!onStart) Surface(tonalElevation = 2.dp) {
+            Row(Modifier.fillMaxWidth().navigationBarsPadding().height(52.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { web?.goBack() }, enabled = canBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") }
+                IconButton(onClick = { web?.goForward() }, enabled = canFwd) { Icon(Icons.AutoMirrored.Filled.ArrowForward, "Вперёд") }
+                IconButton(onClick = { onStart = true; text = ""; web?.stopLoading() }) { Icon(Icons.Default.Home, "Начало") }
+                if (push != null) TextButton(onClick = { toHw() }) { Icon(Icons.Default.NoteAdd, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("В ДЗ") }
+                IconButton(onClick = {
+                    runCatching { web?.context?.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                }, enabled = url.startsWith("http")) { Icon(Icons.Default.OpenInBrowser, "Открыть в браузере") }
+            }
+        }
+    }) { pad ->
+        Box(Modifier.padding(pad).fillMaxSize()) {
+            // WebView создаётся один раз и живёт, пока открыт экран — без перезагрузок
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    WebView(ctx).apply {
+                        settings.apply {
+                            javaScriptEnabled = true
+                            domStorageEnabled = true
+                            cacheMode = WebSettings.LOAD_DEFAULT
+                            loadWithOverviewMode = true
+                            useWideViewPort = true
+                            setSupportZoom(true)
+                            builtInZoomControls = true
+                            displayZoomControls = false
+                            allowFileAccess = false
+                            allowContentAccess = false
+                            mediaPlaybackRequiresUserGesture = true
+                        }
+                        setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+                        webViewClient = object : WebViewClient() {
+                            override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
+                                val s = r.url.scheme ?: return true
+                                if (s == "http" || s == "https") return false
+                                // intent:, tel:, mailto: — открыть в системе
+                                runCatching { v.context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, r.url).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                                return true
+                            }
+                            override fun onPageStarted(v: WebView, u: String?, f: Bitmap?) { url = u ?: url }
+                            override fun doUpdateVisitedHistory(v: WebView, u: String?, reload: Boolean) {
+                                url = u ?: url; canBack = v.canGoBack(); canFwd = v.canGoForward()
                             }
                         }
+                        webChromeClient = object : WebChromeClient() {
+                            override fun onProgressChanged(v: WebView, p: Int) { progress = p }
+                            override fun onReceivedTitle(v: WebView, t: String?) { title = t ?: "" }
+                        }
+                        web = this
                     }
-                    if (progress in 1..99) LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
+                },
+            )
+            // стартовая страница — без сети, открывается сразу
+            AnimatedVisibility(onStart, enter = fadeIn(), exit = fadeOut()) {
+                StartPage(engine, { engine = it }, onSearch = { open(it) }, onQuick = { onStart = false; web?.loadUrl(it) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun StartPage(engine: Int, setEngine: (Int) -> Unit, onSearch: (String) -> Unit, onQuick: (String) -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    var q by remember { mutableStateOf("") }
+    Column(
+        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(cs.primaryContainer.copy(alpha = 0.55f), cs.surface)))
+            .padding(horizontal = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.height(48.dp))
+        Text("Поиск", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = cs.primary)
+        Text("выдели текст на странице и нажми «В ДЗ»", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+        Spacer(Modifier.height(24.dp))
+        Row(
+            Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(28.dp)).background(cs.surface).padding(start = 18.dp, end = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BasicTextField(
+                value = q, onValueChange = { q = it }, singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = cs.onSurface),
+                cursorBrush = SolidColor(cs.primary),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onSearch(q) }),
+                modifier = Modifier.weight(1f),
+                decorationBox = { inner -> Box { if (q.isEmpty()) Text("Например: правописание -тся и -ться", color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis); inner() } },
+            )
+            FilledIconButton(onClick = { onSearch(q) }) { Icon(Icons.Default.Search, "Искать") }
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            ENGINES.forEachIndexed { i, e ->
+                FilterChip(selected = engine == i, onClick = { setEngine(i) }, label = { Text("${e.emoji} ${e.title}", maxLines = 1) })
+            }
+        }
+        Spacer(Modifier.height(28.dp))
+        // быстрые ссылки плиткой
+        QUICK.chunked(3).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                row.forEach { k ->
+                    Column(
+                        Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).clickable { onQuick(k.url) }.padding(vertical = 10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Box(Modifier.size(52.dp).clip(CircleShape).background(cs.secondaryContainer), contentAlignment = Alignment.Center) {
+                            Text(k.emoji, style = MaterialTheme.typography.titleLarge)
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(k.label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                    }
                 }
             }
-        },
-        bottomBar = {
-            Surface(tonalElevation = 3.dp) {
-                Row(
-                    Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 4.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                ) {
-                    IconButton(enabled = canBack, onClick = { web.goBack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") }
-                    IconButton(enabled = canForward, onClick = { web.goForward() }) { Icon(Icons.AutoMirrored.Filled.ArrowForward, "Вперёд") }
-                    IconButton(onClick = { if (progress in 1..99) web.stopLoading() else web.reload() }) {
-                        if (progress in 1..99) Icon(Icons.Default.Close, "Стоп") else Icon(Icons.Default.Refresh, "Обновить")
-                    }
-                    IconButton(onClick = { web.loadUrl(engine.home) }) { Icon(Icons.Default.Home, "Домой") }
-                    FilledTonalButton(onClick = { toHw() }) {
-                        Icon(Icons.Default.EditNote, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("В ДЗ")
-                    }
-                }
-            }
-        },
-    ) { pad ->
-        AndroidView(factory = { web }, modifier = Modifier.padding(pad).consumeWindowInsets(pad).imePadding().fillMaxSize())
+            Spacer(Modifier.height(8.dp))
+        }
     }
 }

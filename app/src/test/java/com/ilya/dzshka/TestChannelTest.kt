@@ -80,4 +80,26 @@ class TestChannelTest {
         assertTrue(File(Store.photosDir(), "t1.jpeg").exists())
         assertTrue(Store.d.history.first().text.startsWith("🧪"))
     }
+
+    @Test fun realHwSendsTextToMainChannel() {
+        assumeTrue(!BuildConfig.HELPER)
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        androidx.work.testing.WorkManagerTestInitHelper.initializeTestWorkManager(ctx)
+        Store.init(ctx)
+        val base = Sched.importText(AppData(), "Пн: Математика\nВт: Математика\nСр: Математика\nЧт: Математика\nПт: Математика\nСб: Математика\nВс: Математика", 0).data
+        val math = base.subjects.first()
+        val e = HwEntry(subjectId = math.id, subjectName = math.name, text = "№ 5, 6",
+            lessonDate = LocalDate.now().toString(), due = LocalDate.now().plusDays(1).toString(), status = EntryStatus.SENDING)
+        Store.replaceAll(base.copy(viber = ViberCfg(token = "MAIN", fromId = "m"), queue = listOf(e)))
+        val w = TestWorkerBuilder<Sender.SendWorker>(ctx, Executors.newSingleThreadExecutor(),
+            workDataOf("ids" to arrayOf(e.id), "moment" to Studio.queueMoment(Store.d).id)).build()
+        val res = w.doWork()
+        assertTrue(res.toString(), res is ListenableWorker.Result.Success)
+        assertTrue(calls.isNotEmpty())
+        assertTrue("ушло в основной канал", calls.all { it.first == "MAIN" })
+        assertTrue(calls.any { it.second.contains("№ 5, 6") })
+        assertTrue("очередь очищена", Store.d.queue.isEmpty())
+        assertTrue("отмечено отправленным", Store.d.isSent(math.id, LocalDate.now().toString()))
+        assertTrue("в архиве", Store.d.archive.any { it.text == "№ 5, 6" })
+    }
 }

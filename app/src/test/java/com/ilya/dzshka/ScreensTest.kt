@@ -3,6 +3,7 @@ package com.ilya.dzshka
 import android.graphics.Bitmap
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.activity.ComponentActivity
 import android.graphics.Canvas
@@ -92,10 +93,19 @@ class ScreensTest {
         rule.onNodeWithText("Расписание").performClick()
         shot("02_schedule")
 
-        rule.onNodeWithText("Студия").performClick()
+        rule.onNodeWithTag("studio").performClick()
+        rule.mainClock.advanceTimeBy(1500)
         shot("03a_studio")
         Store.update { it.copy(moments = Presets.list.first().build()) }
         shot("03b_studio_default")
+        rule.onNodeWithText("Напоминания").performClick()
+        rule.mainClock.advanceTimeBy(800)
+        shot("03c_studio_remind")
+        rule.onNodeWithText("Тест").performClick()
+        rule.mainClock.advanceTimeBy(800)
+        shot("03d_studio_test")
+        rule.onNodeWithTag("studio").performClick()   // выход из Студии
+        rule.mainClock.advanceTimeBy(1500)
 
         rule.onNodeWithText("Настройки").performClick()
         rule.onNodeWithText("Токены и названия").performClick()
@@ -163,10 +173,24 @@ class ScreensTest {
 
     @Test fun darkTheme() {
         org.junit.Assume.assumeTrue(!BuildConfig.HELPER)
-        Store.replaceAll(sampleData(true).copy(look = LookCfg(theme = ThemeMode.DARK, accent = 0xFF0F9D58)))
+        Store.replaceAll(sampleData(true).copy(look = LookCfg(theme = ThemeMode.DARK, accent = 0xFF7C4DFF)))
         val incoming = mutableStateOf<Route?>(null)
-        rule.setContent { DzTheme(Store.d.look) { AppRoot(incoming) } }
+        rule.setContent {
+            DzTheme(Store.d.look, space = true) {
+                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+                    com.ilya.dzshka.ui.SpaceBackdrop()
+                    androidx.compose.material3.Surface(androidx.compose.ui.Modifier.fillMaxSize(), color = androidx.compose.material3.MaterialTheme.colorScheme.background) { AppRoot(incoming) }
+                }
+            }
+        }
+        rule.mainClock.advanceTimeBy(2000)
         shot("08_home_dark")
+        rule.onNodeWithText("Расписание").performClick()
+        rule.mainClock.advanceTimeBy(800)
+        shot("09_schedule_dark")
+        rule.onNodeWithTag("studio").performClick()
+        rule.mainClock.advanceTimeBy(1500)
+        shot("09b_studio_dark")
     }
 
     @Test fun mainNewScreens() {
@@ -191,8 +215,10 @@ class ScreensTest {
         val incoming = mutableStateOf<Route?>(null)
         rule.setContent { DzTheme(Store.d.look) { AppRoot(incoming) } }
         shot("30_home_helpers")
-        rule.onNodeWithText("Канал").performClick()
+        incoming.value = Route.Channel
+        rule.waitForIdle()
         shot("31_channel")
+        rule.onNodeWithContentDescription("Назад").performClick()
         incoming.value = Route.Helpers
         rule.waitForIdle()
         shot("32_helpers")
@@ -323,5 +349,24 @@ class ScreensTest {
             }
             File(dir, "73_widget.png").outputStream().use { out.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
+    }
+
+    @Test fun newLayout() {
+        org.junit.Assume.assumeTrue(!BuildConfig.HELPER)
+        Store.replaceAll(sampleData(true).copy(channelPosts = listOf(ChannelPost(token = "1", text = "📅 ДЗ на завтра\nМатематика: №5"))))
+        val incoming = mutableStateOf<Route?>(null)
+        rule.setContent { DzTheme(Store.d.look) { AppRoot(incoming) } }
+        rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Поиск"))
+        shot("80_home_bottom")
+        rule.onNodeWithText("Поиск").performClick()
+        rule.waitForIdle()
+        shot("81_browser_start")
+        rule.onNodeWithContentDescription("Закрыть").performClick()
+        rule.onNodeWithText("Расписание").performClick()
+        rule.mainClock.advanceTimeBy(800)
+        shot("82_schedule_now")
+        rule.onNodeWithText("ДЗ").performClick()
+        rule.mainClock.advanceTimeBy(800)
+        shot("83_hw_tab")
     }
 }

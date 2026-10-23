@@ -39,6 +39,8 @@ fun ScheduleScreen(push: (Route) -> Unit) {
 
     Scaffold(topBar = { TopAppBar(title = { Text("Расписание") }) }) { pad ->
         LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(bottom = 32.dp)) {
+            item { NowCard(d) }
+            item { TodayBells(d) }
             item {
                 Section("Настроить") {
                     FlowRowButtons {
@@ -137,7 +139,7 @@ private fun DayCard(d: AppData, week: Int, di: Int, day: DaySchedule, onNewSubje
                     Text(d.weekdays.getOrElse(di) { "" }.replaceFirstChar { it.uppercase() }, fontWeight = FontWeight.SemiBold)
                     Hint(
                         if (!day.enabled) "выходной"
-                        else day.lessons.filter { it.isNotBlank() }.joinToString(", ") { d.subject(it)?.let { s -> (if (s.noSend) "🚫" else "") + s.short.ifBlank { s.name } } ?: "?" }
+                        else day.lessons.filter { it.isNotBlank() }.joinToString(", ") { d.subject(it)?.let { s -> s.short.ifBlank { s.name } } ?: "?" }
                             .ifBlank { "уроков нет" }
                     )
                 }
@@ -167,10 +169,6 @@ private fun DayCard(d: AppData, week: Int, di: Int, day: DaySchedule, onNewSubje
                             if (v == NEW) onNewSubject(i)
                             else Store.update { it.editDay(week, di) { ds -> ds.copy(lessons = ds.lessons.mapIndexed { k, x -> if (k == i) v else x }) } }
                         }, Modifier.weight(1f))
-                        val subj = d.subject(sid)
-                        if (subj != null) IconToggleButton(checked = subj.noSend, onCheckedChange = { v ->
-                            Store.update { a -> a.copy(subjects = a.subjects.map { if (it.id == subj.id) it.copy(noSend = v) else it }) }
-                        }) { Text(if (subj.noSend) "🚫" else "📝") }
                         IconButton(onClick = {
                             if (i > 0) Store.update {
                                 it.editDay(week, di) { ds -> ds.copy(lessons = ds.lessons.toMutableList().apply { add(i - 1, removeAt(i)) }) }
@@ -188,7 +186,6 @@ private fun DayCard(d: AppData, week: Int, di: Int, day: DaySchedule, onNewSubje
                     TextButton(onClick = onCopy) { Text("Копировать в другие дни") }
                     TextButton(onClick = { Store.update { it.editDay(week, di) { ds -> ds.copy(lessons = emptyList()) } } }) { Text("Очистить") }
                 }
-                Hint("📝 — по предмету присылают ДЗ, 🚫 — «не присылать» (физра и т.п.). Нажми, чтобы переключить.")
                 if (bell != null && day.lessons.size > bell.slots.size)
                     Hint("⚠ В «${bell.name}» только ${bell.slots.size} звонков — для лишних уроков не будет напоминаний.")
             }
@@ -376,6 +373,95 @@ fun HolidaysScreen(onBack: () -> Unit) {
                     Button(onClick = { Store.update { it.copy(holidays = it.holidays + Holiday(from = today, to = today)) } }) { Text("+ каникулы / выходной") }
                 }
             }
+        }
+    }
+}
+
+// ---------------- Сейчас: урок или перемена ----------------
+
+private fun dur(min: Int): String = if (min >= 60) "${min / 60} ч ${min % 60} мин" else "$min мин"
+
+/** Что сейчас: какой урок или перемена, сколько осталось, что дальше. Обновляется каждые 15 секунд. */
+@Composable
+fun NowCard(d: AppData) {
+    var now by remember { mutableStateOf(java.time.LocalDateTime.now()) }
+    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(15_000); now = java.time.LocalDateTime.now() } }
+    val today = now.toLocalDate()
+    val m = now.hour * 60 + now.minute
+    val sec = now.second
+    val lessons = remember(d, today) { Sched.lessonsOn(d, today).filter { it.start != null && it.end != null } }
+    fun name(l: Lesson) = d.subject(l.subjectId)?.let { listOfNotNull(it.emoji.takeIf { e -> e.isNotBlank() }, it.name).joinToString(" ") } ?: "?"
+    val cs = MaterialTheme.colorScheme
+
+    var big = ""; var small = ""; var next = ""; var prog: Float? = null
+    val cur = lessons.firstOrNull { m >= it.start!! && m < it.end!! }
+    val nextL = lessons.firstOrNull { it.start!! > m }
+    when {
+        Sched.isHoliday(d, today) -> { big = "Каникулы 🎉"; small = "Уроков нет" }
+        lessons.isEmpty() -> { big = "Сегодня уроков нет"; small = "Выходной" }
+        cur != null -> {
+            big = "Идёт ${cur.number} урок"
+            small = "${name(cur)} · ${Time.fmt(cur.start!!)}–${Time.fmt(cur.end!!)} · осталось ${dur(cur.end!! - m)}"
+            prog = ((m - cur.start!!) * 60 + sec) / ((cur.end!! - cur.start!!) * 60f)
+            if (nextL != null) next = "Потом перемена ${dur(nextL.start!! - cur.end!!)}, дальше ${nextL.number} урок — ${name(nextL)}"
+            else next = "Это последний урок 🏁"
+        }
+        nextL != null && lessons.first().start!! > m -> {
+            big = "Уроки начнутся в ${Time.fmt(nextL.start!!)}"
+            small = "Через ${dur(nextL.start!! - m)} · ${nextL.number} урок — ${name(nextL)}"
+        }
+        nextL != null -> {
+            val prev = lessons.last { it.end!! <= m }
+            big = "Перемена · до звонка ${dur(nextL.start!! - m)}"
+            small = "Дальше ${nextL.number} урок — ${name(nextL)} в ${Time.fmt(nextL.start!!)}"
+            prog = ((m - prev.end!!) * 60 + sec) / ((nextL.start!! - prev.end!!) * 60f)
+            next = "Перемена ${dur(nextL.start!! - prev.end!!)}"
+        }
+        else -> {
+            big = "Уроки закончились ✅"
+            val nd = Sched.nextSchoolDay(d, today)
+            val first = Sched.lessonsOn(d, nd).firstOrNull { it.start != null }
+            small = if (first != null) "Следующий день: ${prettyDate(d, nd)}, ${first.number} урок в ${Time.fmt(first.start!!)} — ${name(first)}" else ""
+        }
+    }
+    ElevatedCard(
+        colors = CardDefaults.elevatedCardColors(containerColor = cs.primaryContainer),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(Time.fmt(m), style = MaterialTheme.typography.labelLarge, color = cs.onPrimaryContainer.copy(alpha = 0.7f))
+            Text(big, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = cs.onPrimaryContainer)
+            if (small.isNotBlank()) Text(small, color = cs.onPrimaryContainer)
+            prog?.let { LinearProgressIndicator(progress = { it.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth()) }
+            if (next.isNotBlank()) Text(next, style = MaterialTheme.typography.bodySmall, color = cs.onPrimaryContainer.copy(alpha = 0.8f))
+        }
+    }
+}
+
+/** Сегодня по звонкам: уроки со временем и переменами между ними. */
+@Composable
+private fun TodayBells(d: AppData) {
+    val today = java.time.LocalDate.now()
+    val lessons = remember(d, today) { Sched.lessonsOn(d, today) }
+    if (lessons.isEmpty()) return
+    val nowM = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
+    Section("Сегодня, ${prettyDate(d, today)}") {
+        lessons.forEachIndexed { i, l ->
+            val s = d.subject(l.subjectId)
+            val past = l.end != null && l.end <= nowM
+            val cur = l.start != null && l.end != null && nowM in l.start until l.end
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("${l.number}", Modifier.width(24.dp), fontWeight = FontWeight.Bold,
+                    color = if (cur) MaterialTheme.colorScheme.primary else if (past) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface)
+                Text(if (l.start != null && l.end != null) "${Time.fmt(l.start)}–${Time.fmt(l.end)}" else "—", Modifier.width(100.dp),
+                    style = MaterialTheme.typography.bodySmall, color = if (past) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface)
+                Text(listOfNotNull(s?.emoji?.takeIf { it.isNotBlank() }, s?.name ?: "?").joinToString(" "), Modifier.weight(1f),
+                    fontWeight = if (cur) FontWeight.Bold else FontWeight.Normal,
+                    color = if (past) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface)
+                if (cur) Text("сейчас", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            }
+            val n = lessons.getOrNull(i + 1)
+            if (n?.start != null && l.end != null) Text("      перемена ${n.start - l.end} мин", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
         }
     }
 }

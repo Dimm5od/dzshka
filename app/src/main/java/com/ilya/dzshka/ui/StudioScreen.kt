@@ -49,31 +49,8 @@ fun StudioScreen(push: (com.ilya.dzshka.Route) -> Unit = {}) {
 
     fun updM(id: String, f: (Moment) -> Moment) = Store.update { a -> a.copy(moments = a.moments.map { if (it.id == id) f(it) else it }) }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Студия отправки") }) }) { pad ->
+    Scaffold(topBar = { TopAppBar(title = { Text("Студия · отправка") }) }) { pad ->
         LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(bottom = 48.dp)) {
-            item {
-                ElevatedCard(
-                    onClick = { push(com.ilya.dzshka.Route.Test) },
-                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-                ) {
-                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("🧪", style = MaterialTheme.typography.headlineSmall)
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Прогнать неделю за 10 минут", fontWeight = FontWeight.SemiBold)
-                            Hint("Проверь настройки вживую: звонки, уведомления и что уйдёт в канал")
-                        }
-                        Icon(Icons.Default.ChevronRight, null)
-                    }
-                }
-            }
-            item {
-                Row(Modifier.padding(horizontal = 12.dp)) {
-                    OutlinedButton(onClick = { push(com.ilya.dzshka.Route.Templates) }) { Text("Токены и названия (Ч, М, П…)") }
-                }
-            }
-            item { ReminderStudioSection(d) }
             item {
                 Section("Готовые варианты") {
                     Hint("Нажми — и всё настроится. Потом можно поменять что угодно ниже.")
@@ -130,6 +107,17 @@ fun StudioScreen(push: (com.ilya.dzshka.Route) -> Unit = {}) {
     applyPreset?.let { p ->
         ConfirmDialog("«${p.name}»", "Заменить текущие моменты отправки этим вариантом?\n\n${p.desc}", "Заменить",
             onYes = { Store.update { it.copy(moments = p.build()) } }, onDismiss = { applyPreset = null })
+    }
+}
+
+/** Вкладка Студии «Напоминания»: как выглядит напоминание на перемене. */
+@Composable
+fun StudioRemindTab() {
+    val d by Store.data.collectAsState()
+    Scaffold(topBar = { TopAppBar(title = { Text("Студия · напоминания") }) }) { pad ->
+        LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(bottom = 48.dp)) {
+            item { ReminderStudioSection(d) }
+        }
     }
 }
 
