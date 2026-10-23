@@ -4,6 +4,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -70,7 +71,7 @@ fun DzBottomBar(
                 }
             }
         }
-        BlackHole(studio, pull, Modifier.align(Alignment.TopCenter).offset(y = (-30).dp), onCenter)
+        BlackHole(studio, pull, Modifier.align(Alignment.TopCenter).offset(y = (-34).dp), onCenter)
     }
 }
 
@@ -95,74 +96,51 @@ private fun NavCell(it: NavItem, sel: Boolean, modifier: Modifier, onClick: () -
     }
 }
 
+private val WARM = listOf(com.ilya.dzshka.R.drawable.bh_warm_0, com.ilya.dzshka.R.drawable.bh_warm_1, com.ilya.dzshka.R.drawable.bh_warm_2,
+    com.ilya.dzshka.R.drawable.bh_warm_3, com.ilya.dzshka.R.drawable.bh_warm_4, com.ilya.dzshka.R.drawable.bh_warm_5)
+private val COLD = listOf(com.ilya.dzshka.R.drawable.bh_cold_0, com.ilya.dzshka.R.drawable.bh_cold_1, com.ilya.dzshka.R.drawable.bh_cold_2,
+    com.ilya.dzshka.R.drawable.bh_cold_3, com.ilya.dzshka.R.drawable.bh_cold_4, com.ilya.dzshka.R.drawable.bh_cold_5)
+
 /**
- * Центральная кнопка «Студия» — чёрная дыра как в «Интерстелларе»: тёмный шар, яркий диск поперёк,
- * над шаром — изогнутое изображение дальней части диска, снизу — тонкое кольцо. Диск переливается,
- * по нему бегут искры. В режиме Студии — холодные цвета и крестик.
+ * Центральная кнопка «Студия»: круглая кнопка, внутри и вокруг — чёрная дыра с наклонённым диском, как в «Интерстелларе».
+ * Картинка не нарисована, а посчитана: трассировка лучей света вокруг чёрной дыры (6 кадров, диск течёт по кругу).
+ * В режиме Студии — холодный диск и крестик.
  */
 @Composable
 private fun BlackHole(studio: Boolean, pull: Float, modifier: Modifier, onClick: () -> Unit) {
     val inf = rememberInfiniteTransition(label = "bh")
-    val t by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(if (studio) 2200 else 4200, easing = LinearEasing)), label = "t")
-    val glow by inf.animateFloat(0.75f, 1f, infiniteRepeatable(tween(1600, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "glow")
+    val f by inf.animateFloat(0f, 6f, infiniteRepeatable(tween(if (studio) 1800 else 3000, easing = LinearEasing)), label = "f")
+    val glow by inf.animateFloat(0.7f, 1f, infiniteRepeatable(tween(1600, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "glow")
     val press = remember { Animatable(1f) }
     val scope = rememberCoroutineScope()
-    // тёплые цвета диска / холодные в Студии
-    val hot = if (studio) Color(0xFFE0F7FF) else Color(0xFFFFF4D6)
-    val mid = if (studio) Color(0xFF4FC3F7) else Color(0xFFFFA040)
-    val deep = if (studio) Color(0xFF7C4DFF) else Color(0xFFD84315)
+    val frames = if (studio) COLD else WARM
+    val i = f.toInt() % 6
+    val frac = f - f.toInt()
+    val cs = MaterialTheme.colorScheme
     Box(
-        modifier.size(width = 124.dp, height = 78.dp)
-            .graphicsLayer { val s = press.value * (1f + 0.3f * pull); scaleX = s; scaleY = s }
-            .clickable(remember { MutableInteractionSource() }, indication = null) {
-                scope.launch { press.snapTo(0.86f); press.animateTo(1f, spring(0.35f, 600f)) }
-                onClick()
-            }
+        modifier.size(width = 180.dp, height = 92.dp)
+            .graphicsLayer { val s = press.value * (1f + 0.35f * pull); scaleX = s; scaleY = s; rotationZ = pull * 25f }
             .semantics { contentDescription = if (studio) "Выйти из Студии" else "Студия" }
             .testTag("studio"),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val c = Offset(size.width / 2f, size.height / 2f + 4.dp.toPx())
-            val R = 15.dp.toPx()                 // горизонт событий
-            val a = R * 3.9f; val b = R * 0.22f  // полуоси диска (тонкий, длинный)
-            val flash = (1f + pull * 1.5f).coerceAtMost(2f)
-            fun arcRing(r: Float, w: Float, start: Float, sweep: Float, brush: Brush, alpha: Float) = drawArc(brush, start, sweep, false,
-                topLeft = Offset(c.x - r, c.y - r), size = androidx.compose.ui.geometry.Size(r * 2, r * 2),
-                style = Stroke(width = w, cap = androidx.compose.ui.graphics.StrokeCap.Round), alpha = alpha)
-            val warm = Brush.horizontalGradient(listOf(deep, mid, hot, Color.White, hot, mid, deep), c.x - R * 1.7f, c.x + R * 1.7f)
-            // общее свечение
-            drawCircle(Brush.radialGradient(listOf(mid.copy(alpha = 0.45f * glow * flash), deep.copy(alpha = 0.15f), Color.Transparent), c, R * 2.8f), R * 2.8f, c)
-            // свечение вдоль диска
-            drawOval(Brush.horizontalGradient(listOf(Color.Transparent, mid.copy(alpha = 0.45f * glow), Color.Transparent), c.x - a, c.x + a),
-                topLeft = Offset(c.x - a, c.y - b * 3.2f), size = androidx.compose.ui.geometry.Size(a * 2, b * 6.4f))
-            // верхний ореол — дальняя часть диска, загнутая гравитацией над шаром (как в «Интерстелларе»)
-            arcRing(R * 1.62f, R * 0.30f, 172f, 196f, warm, 0.30f * glow)
-            arcRing(R * 1.40f, R * 0.30f, 172f, 196f, warm, 0.65f * glow)
-            arcRing(R * 1.18f, R * 0.26f, 175f, 190f, warm, 0.95f)
-            // нижнее тонкое кольцо
-            arcRing(R * 1.12f, R * 0.09f, 18f, 144f, warm, 0.85f)
-            // сам шар
-            drawCircle(Color.Black, R, c)
-            drawCircle(hot.copy(alpha = 0.6f), R, c, style = Stroke(width = 1.dp.toPx()))
-            // передний диск поперёк: слева ярче (летит к нам)
-            drawOval(Brush.horizontalGradient(listOf(Color.Transparent, deep, mid, hot, Color.White, Color.White, hot, mid, deep.copy(alpha = 0.6f), Color.Transparent),
-                c.x - a, c.x + a), topLeft = Offset(c.x - a, c.y - b), size = androidx.compose.ui.geometry.Size(a * 2, b * 2), alpha = glow)
-            drawOval(Brush.horizontalGradient(listOf(Color.Transparent, Color.White, Color.Transparent), c.x - a * 0.55f, c.x + a * 0.55f),
-                topLeft = Offset(c.x - a * 0.55f, c.y - b * 0.3f), size = androidx.compose.ui.geometry.Size(a * 1.1f, b * 0.6f))
-            // искры, бегущие по диску
-            for (k in 0 until 4) {
-                val ph = (t + k / 4f) % 1f
-                val x = c.x + a * 0.9f * (1f - 2f * ph)
-                val fade = kotlin.math.sin(Math.PI * ph).toFloat()
-                drawCircle(Color.White.copy(alpha = 0.9f * fade), 1.3.dp.toPx(), Offset(x, c.y))
-            }
-            // крестик выхода в режиме Студии
-            if (studio) {
-                val q = R * 0.38f
-                drawLine(Color.White, Offset(c.x - q, c.y - q - R * 0.35f), Offset(c.x + q, c.y + q - R * 0.35f), 2.2.dp.toPx(), androidx.compose.ui.graphics.StrokeCap.Round)
-                drawLine(Color.White, Offset(c.x + q, c.y - q - R * 0.35f), Offset(c.x - q, c.y + q - R * 0.35f), 2.2.dp.toPx(), androidx.compose.ui.graphics.StrokeCap.Round)
-            }
-        }
+        // сама кнопка — круг 66 dp (в 1,5 раза больше обычной), с тёмной серединой и светящимся ободком
+        val ring = if (studio) Color(0xFF4FC3F7) else Color(0xFFFFA040)
+        Box(
+            Modifier.size(66.dp).shadow(12.dp, CircleShape, ambientColor = ring, spotColor = ring).clip(CircleShape)
+                .background(Brush.radialGradient(listOf(Color(0xFF15102A), Color(0xFF05040C))))
+                .clickable(remember { MutableInteractionSource() }, indication = null) {
+                    scope.launch { press.snapTo(0.86f); press.animateTo(1f, spring(0.35f, 600f)) }
+                    onClick()
+                },
+        )
+        // чёрная дыра: два соседних кадра плавно перетекают
+        val m = Modifier.size(width = 180.dp, height = 90.dp).graphicsLayer { alpha = glow.coerceAtLeast(0.85f) }
+        androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(frames[i]), null, m.graphicsLayer { alpha = 1f - frac })
+        androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(frames[(i + 1) % 6]), null, m.graphicsLayer { alpha = frac })
+        // ободок кнопки поверх диска
+        Box(Modifier.size(66.dp).clip(CircleShape).background(Color.Transparent)
+            .then(Modifier.drawBehind { drawCircle(ring.copy(alpha = 0.55f * glow), style = Stroke(1.5.dp.toPx())) }))
+        if (studio) Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(20.dp).offset(y = (-2).dp))
     }
 }
