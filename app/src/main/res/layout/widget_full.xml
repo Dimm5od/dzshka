@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/widget_bg" android:orientation="vertical" android:padding="12dp">
+
+    <TextView android:id="@+id/phrase" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:background="@drawable/widget_chip" android:ellipsize="end" android:maxLines="3"
+        android:padding="8dp" android:text="Мур!" android:textColor="#FFFFFFFF" android:textSize="13sp" />
+
+    <TextView android:id="@+id/next_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" android:text="⏭ На завтра · 0" android:textColor="#FFFFC46B" android:textSize="12sp" android:textStyle="bold" />
+    <TextView android:id="@+id/next" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:ellipsize="end" android:maxLines="4" android:text="" android:textColor="#FFFFFFFF" android:textSize="13sp" />
+
+    <TextView android:id="@+id/today_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="6dp" android:text="📌 На сегодня" android:textColor="#FF8EC5FF" android:textSize="12sp" android:textStyle="bold" />
+    <TextView android:id="@+id/today" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:ellipsize="end" android:maxLines="3" android:text="" android:textColor="#FFFFFFFF" android:textSize="13sp" />
+
+    <TextView android:id="@+id/given_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="6dp" android:text="✏ Сегодня задали" android:textColor="#FFA5E3A0" android:textSize="12sp" android:textStyle="bold" />
+    <TextView android:id="@+id/given" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:ellipsize="end" android:maxLines="3" android:text="" android:textColor="#FFFFFFFF" android:textSize="13sp" />
+</LinearLayout>

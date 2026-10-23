@@ -1,0 +1,17 @@
+# секреты подписи — НИКОГДА в git
+keystore/
+keystore.properties
+
+# сборка и локальное
+build/
+app/build/
+.gradle/
+local.properties
+out/
+shots/
+*.apk
+*.jks
+.idea/
+.DS_Store
+
+.kotlin/

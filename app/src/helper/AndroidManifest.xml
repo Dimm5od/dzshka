@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Помощник: как можно меньше разрешений. Спрашивается только «Уведомления». -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" tools:node="remove" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" tools:node="remove" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" tools:node="remove" />
+
+    <application>
+        <service android:name=".work.LinkService" tools:node="remove" />
+        <service android:name=".work.ChatListener" tools:node="remove" />
+        <service android:name=".mascot.CatService" tools:node="remove" />
+        <receiver android:name=".mascot.CatWidget" tools:node="remove" />
+        <service android:name="androidx.work.impl.foreground.SystemForegroundService" tools:node="remove" />
+    </application>
+</manifest>
