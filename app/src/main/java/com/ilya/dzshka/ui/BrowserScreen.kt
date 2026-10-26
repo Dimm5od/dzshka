@@ -178,6 +178,10 @@ fun BrowserScreen(onBack: (() -> Unit)? = null, push: ((com.ilya.dzshka.Route) -
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
                     WebView(ctx).apply {
+                        // Важно: строго «на весь экран». Без этого Compose отдаёт WebView размер «по содержимому»,
+                        // и страницы с высотой 100% / 100vh (например, Google SafeSearch) схлопываются в одну строку.
+                        layoutParams = android.view.ViewGroup.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
                         settings.apply {
                             javaScriptEnabled = true
                             domStorageEnabled = true
@@ -190,8 +194,11 @@ fun BrowserScreen(onBack: (() -> Unit)? = null, push: ((com.ilya.dzshka.Route) -
                             allowFileAccess = false
                             allowContentAccess = false
                             mediaPlaybackRequiresUserGesture = true
+                            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                            offscreenPreRaster = true
+                            javaScriptCanOpenWindowsAutomatically = false
                         }
-                        setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+                        setBackgroundColor(android.graphics.Color.WHITE)
                         webViewClient = object : WebViewClient() {
                             override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
                                 val s = r.url.scheme ?: return true
