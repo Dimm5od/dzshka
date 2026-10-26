@@ -1,0 +1,5 @@
+code=11
+name=2.1
+file=Kotik-2.1.apk
+size=185529
+sha256=a457c555c76b97b972ac79fec2e482fbabe4d90958f55cb9e5db06a3bf27fa88
