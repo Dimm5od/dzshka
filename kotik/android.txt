@@ -1,5 +1,5 @@
-code=12
-name=2.2
-file=Kotik-2.2.apk
+code=13
+name=2.3
+file=Kotik-2.3.apk
 size=189625
-sha256=2d33a9d798004c1f49f3049076d80d25950c05e6e1592a6b89da6c0fbdf09ec9
+sha256=72def08d7839b62dffc7c1c47a1e73ee358c36f7a51bbd656d05114c87128c3f
