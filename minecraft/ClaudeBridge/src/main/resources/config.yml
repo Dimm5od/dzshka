@@ -1,0 +1,59 @@
+# ===== ClaudeBridge =====
+# Как позвать Claude в чате:  @claude построй домик
+trigger: "@claude"
+
+# Кто может звать Claude (ники Minecraft). Остальных он не слушает.
+allowed-players:
+  - GriGold
+
+# Путь к программе Claude Code.
+# Обычно хватает просто claude. Если в чате пишет "не нашёл программу",
+# узнай путь командой в PowerShell:  where.exe claude
+# и вставь его сюда, например:  C:\Users\Administrator\.local\bin\claude.exe
+claude-path: "claude"
+
+# Модель (можно оставить пустым — будет модель по умолчанию из твоей подписки)
+model: ""
+
+# Дополнительные параметры запуска claude (для опытных, можно не трогать)
+extra-args: []
+
+# Сколько секунд ждать ответ
+timeout-seconds: 180
+
+# Максимум команд за одну просьбу
+max-commands: 1000
+
+# Сколько команд выполнять за один тик (меньше = меньше лагов, но строит дольше)
+commands-per-tick: 50
+
+# Команды, которые Claude НЕЛЬЗЯ выполнять
+blocked-commands:
+  - op
+  - deop
+  - stop
+  - restart
+  - reload
+  - ban
+  - ban-ip
+  - pardon
+  - pardon-ip
+  - kick
+  - whitelist
+  - save-off
+  - save-all
+  - debug
+  - perf
+  - jfr
+  - transfer
+  - plugins
+  - pl
+  - lp
+  - luckperms
+  - pex
+  - claude
+
+# Если команда содержит любое из этих слов — она тоже блокируется
+blocked-words:
+  - command_block
+  - command_block_minecart

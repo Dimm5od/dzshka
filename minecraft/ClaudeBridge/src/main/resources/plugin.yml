@@ -1,0 +1,10 @@
+name: ClaudeBridge
+version: '1.0'
+main: ru.grigold.claudebridge.ClaudeBridge
+api-version: '1.21'
+description: Пишешь в чат @claude ... и Claude выполняет просьбу на сервере
+author: GriGold
+commands:
+  claude:
+    description: Попросить Claude что-то сделать
+    usage: /claude <просьба>
