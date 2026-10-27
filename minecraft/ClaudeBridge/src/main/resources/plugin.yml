@@ -1,8 +1,8 @@
 name: ClaudeBridge
-version: '1.0'
+version: '2.0'
 main: ru.grigold.claudebridge.ClaudeBridge
 api-version: '1.21'
-description: Пишешь в чат @claude ... и Claude выполняет просьбу на сервере
+description: Пишешь в чат «клауд ...» и Claude выполняет просьбу на сервере
 author: GriGold
 commands:
   claude:
