@@ -14,9 +14,6 @@ data class Subject(
     val remind: Boolean = true,
     /** «Не присылать» — по этому предмету ДЗ не бывает (физра и т.п.) */
     val noSend: Boolean = false,
-    /** учитель и кабинет — показываются в расписании */
-    val teacher: String = "",
-    val room: String = "",
 )
 
 @Serializable

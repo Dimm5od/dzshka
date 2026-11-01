@@ -33,13 +33,21 @@ class RemoteScheduleTest {
         assertEquals(rus.id, mon[6])
         assertNotEquals(hist.id, mon[5])
         assertEquals(mon, d.weeks[1].days[0].lessons)          // во все недели
-        assertEquals("408", d.subjects.first { it.id == rus.id }.room)
-        assertEquals("Русский язык", d.subjects.first { it.id == rus.id }.name)   // своё название не трогаем
-        assertEquals(1, d.remoteSched.rev)
+        assertEquals("Русский", d.subjects.first { it.id == rus.id }.name)   // переименован
+        assertEquals(2, d.remoteSched.rev)
         assertTrue(rep.contains("Понедельник: 7"))
         assertEquals(3 + 5, d.subjects.size)
         // вторник не тронут
         assertEquals(d0.weeks[0].days[1], d.weeks[0].days[1])
+    }
+
+    @Test fun oldRev1NamesGetRenamed() {
+        val old = listOf("Воспитание для общества", "Математика", "Изобразительное искусство", "Личностное развитие",
+            "Румынский язык и литература", "История, культура и традиции украинского народа", "Русский язык и литература").map { Subject(name = it) }
+        val (d, _) = RemoteSchedule.apply(AppData(subjects = old), file())
+        assertEquals(7, d.subjects.size)
+        assertEquals(listOf("Общественное воспитание", "Математика", "Рисование", "Развитие личности", "Румынский", "ИКТУ", "Русский"),
+            d.weeks[0].days[0].lessons.map { id -> d.subjects.first { it.id == id }.name })
     }
 
     @Test fun reapplyDoesNotDuplicate() {

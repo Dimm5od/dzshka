@@ -27,8 +27,8 @@ object RemoteSchedule {
         val match: List<String> = emptyList(),
         val short: String = "",
         val emoji: String = "",
-        val teacher: String = "",
-        val room: String = "",
+        /** переименовать найденный предмет в name (и поставить short/emoji) */
+        val rename: Boolean = false,
     )
 
     /** day: 0 = понедельник … 6 = воскресенье; week: -1 = во все недели. Пустое name — окно. */
@@ -77,11 +77,13 @@ object RemoteSchedule {
                 if (l.name.isBlank()) return@map ""
                 val ex = find(subjects, l)
                 if (ex != null) {
-                    val upd = ex.copy(teacher = l.teacher.ifBlank { ex.teacher }, room = l.room.ifBlank { ex.room })
-                    subjects = subjects.map { if (it.id == ex.id) upd else it }
+                    if (l.rename) {
+                        val upd = ex.copy(name = l.name.trim(), short = l.short, emoji = l.emoji.ifBlank { ex.emoji })
+                        subjects = subjects.map { if (it.id == ex.id) upd else it }
+                    }
                     ex.id
                 } else {
-                    val s = Subject(name = l.name.trim(), short = l.short, emoji = l.emoji, teacher = l.teacher, room = l.room)
+                    val s = Subject(name = l.name.trim(), short = l.short, emoji = l.emoji)
                     subjects = subjects + s
                     created++
                     s.id

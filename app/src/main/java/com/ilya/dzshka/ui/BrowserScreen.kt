@@ -84,7 +84,6 @@ fun BrowserScreen(onBack: (() -> Unit)? = null, push: ((com.ilya.dzshka.Route) -
     var text by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf(false) }
     var onStart by remember { mutableStateOf(true) }   // стартовая страница вместо сайта
-    var pickOpen by remember { mutableStateOf(false) }
     var progress by remember { mutableIntStateOf(100) }
     var title by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
@@ -167,21 +166,6 @@ fun BrowserScreen(onBack: (() -> Unit)? = null, push: ((com.ilya.dzshka.Route) -
                 IconButton(onClick = { web?.goForward() }, enabled = canFwd) { Icon(Icons.AutoMirrored.Filled.ArrowForward, "Вперёд") }
                 IconButton(onClick = { onStart = true; text = ""; web?.stopLoading() }) { Icon(Icons.Default.Home, "Начало") }
                 if (push != null) TextButton(onClick = { toHw() }) { Icon(Icons.Default.NoteAdd, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("В ДЗ") }
-                Box {
-                    IconButton(onClick = { pickOpen = true }, enabled = url.startsWith("http")) { Icon(Icons.Default.OpenInBrowser, "Открыть в браузере") }
-                    DropdownMenu(expanded = pickOpen, onDismissRequest = { pickOpen = false }) {
-                        ExternalBrowsers.installed(web?.context).forEach { b ->
-                            DropdownMenuItem(text = { Text("${b.emoji} ${b.title}") }, onClick = {
-                                pickOpen = false
-                                openExternal(web?.context, url, b.pkg)
-                            })
-                        }
-                        DropdownMenuItem(text = { Text("📂 Выбрать из списка…") }, onClick = {
-                            pickOpen = false
-                            openExternal(web?.context, url, null)
-                        })
-                    }
-                }
             }
         }
     }) { pad ->
@@ -297,40 +281,3 @@ private fun StartPage(engine: Int, setEngine: (Int) -> Unit, onSearch: (String) 
     }
 }
 
-/** Внешние браузеры: открываем текущую ссылку в выбранном установленном браузере. */
-data class ExternalBrowser(val title: String, val emoji: String, val pkg: String)
-
-object ExternalBrowsers {
-    val known = listOf(
-        ExternalBrowser("Google Chrome", "🟢", "com.android.chrome"),
-        ExternalBrowser("Opera", "🔴", "com.opera.browser"),
-        ExternalBrowser("Opera Mini", "🔴", "com.opera.mini.native"),
-        ExternalBrowser("Opera GX", "🔴", "com.opera.gx"),
-        ExternalBrowser("Tor Browser", "🧅", "org.torproject.torbrowser"),
-        ExternalBrowser("Firefox", "🦊", "org.mozilla.firefox"),
-        ExternalBrowser("Microsoft Edge", "🔵", "com.microsoft.emmx"),
-    )
-
-    /** Только те, что реально установлены на телефоне. */
-    fun installed(ctx: android.content.Context?): List<ExternalBrowser> {
-        if (ctx == null) return emptyList()
-        return known.filter { b ->
-            runCatching { ctx.packageManager.getPackageInfo(b.pkg, 0); true }.getOrDefault(false)
-        }
-    }
-}
-
-/** Открывает ссылку в конкретном браузере (pkg) или в системном выборе (pkg = null). */
-fun openExternal(ctx: android.content.Context?, url: String, pkg: String?) {
-    if (ctx == null) return
-    val view = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
-        .addCategory(android.content.Intent.CATEGORY_BROWSABLE)
-        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-    runCatching {
-        if (pkg != null) ctx.startActivity(view.setPackage(pkg))
-        else ctx.startActivity(android.content.Intent.createChooser(view, "Открыть в браузере").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-    }.onFailure {
-        // выбранного браузера нет или он не открывает ссылки — показываем системный выбор
-        runCatching { ctx.startActivity(android.content.Intent.createChooser(view, "Открыть в браузере").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
-    }
-}
