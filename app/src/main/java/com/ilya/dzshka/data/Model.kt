@@ -14,6 +14,9 @@ data class Subject(
     val remind: Boolean = true,
     /** «Не присылать» — по этому предмету ДЗ не бывает (физра и т.п.) */
     val noSend: Boolean = false,
+    /** учитель и кабинет — показываются в расписании */
+    val teacher: String = "",
+    val room: String = "",
 )
 
 @Serializable
@@ -396,6 +399,8 @@ data class AppData(
     val gh: GhCfg = GhCfg(),
     val mascot: MascotCfg = MascotCfg(),
     val widget: WidgetCfg = WidgetCfg(),
+    /** расписание, которое присылают через GitHub (schedule.json) */
+    val remoteSched: RemoteSchedCfg = RemoteSchedCfg(),
 ) {
     fun isFromChat(subjectId: String, lessonDate: String) = "$lessonDate|$subjectId" in fromChat
     val testReady get() = testViber.token.isNotBlank() && testViber.fromId.isNotBlank()
@@ -608,3 +613,12 @@ object Time {
         return "%02d:%02d".format(m / 60, m % 60)
     }
 }
+
+/** Расписание с GitHub: какую версию файла уже применили и что поменялось. */
+@Serializable
+data class RemoteSchedCfg(
+    val enabled: Boolean = true,
+    val rev: Int = 0,
+    val report: String = "",
+    val at: String = "",
+)

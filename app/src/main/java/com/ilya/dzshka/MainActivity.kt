@@ -91,6 +91,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         App.visible = true
+        if (!BuildConfig.HELPER) runCatching { com.ilya.dzshka.net.RemoteSchedule.check(this) }
     }
 
     override fun onPause() {

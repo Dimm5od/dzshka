@@ -22,6 +22,10 @@ import com.ilya.dzshka.SubScreen
 import com.ilya.dzshka.data.*
 
 private const val EMPTY = ""
+
+/** «каб. 405 · Турик Любовь» или null, если ничего не указано */
+fun Subject.whereWho(): String? = listOfNotNull(room.takeIf { it.isNotBlank() }?.let { "каб. $it" }, teacher.takeIf { it.isNotBlank() })
+    .joinToString(" · ").ifBlank { null }
 private const val NEW = "__new__"
 
 private fun AppData.editDay(week: Int, day: Int, f: (DaySchedule) -> DaySchedule): AppData =
@@ -48,6 +52,16 @@ fun ScheduleScreen(push: (Route) -> Unit) {
                         OutlinedButton(onClick = { push(Route.Bells) }) { Text("Звонки") }
                         OutlinedButton(onClick = { push(Route.Import) }) { Text("Вставить текстом") }
                         OutlinedButton(onClick = { push(Route.Holidays) }) { Text("Каникулы (${d.holidays.size})") }
+                    }
+                    if (!com.ilya.dzshka.BuildConfig.HELPER) {
+                        val ctx = LocalContext.current
+                        var busy by remember { mutableStateOf(false) }
+                        SwitchRow("☁ Расписание с GitHub", d.remoteSched.enabled, { v -> Store.update { it.copy(remoteSched = it.remoteSched.copy(enabled = v)) } },
+                            desc = "Claude может прислать новое расписание через GitHub — оно подтянется само при открытии приложения")
+                        if (d.remoteSched.report.isNotBlank()) Hint("Последнее: ${d.remoteSched.at} — ${d.remoteSched.report}")
+                        OutlinedButton(onClick = { busy = true; com.ilya.dzshka.net.RemoteSchedule.check(ctx, force = true) { busy = false } }, enabled = !busy) {
+                            Text(if (busy) "Проверяю…" else "Проверить сейчас")
+                        }
                     }
                 }
             }
@@ -178,6 +192,7 @@ private fun DayCard(d: AppData, week: Int, di: Int, day: DaySchedule, onNewSubje
                             Store.update { it.editDay(week, di) { ds -> ds.copy(lessons = ds.lessons.filterIndexed { k, _ -> k != i }) } }
                         }) { Icon(Icons.Default.Close, "Убрать") }
                     }
+                    d.subject(sid)?.whereWho()?.let { Hint("      $it") }
                 }
                 FlowRowButtons {
                     TextButton(onClick = {
@@ -214,6 +229,10 @@ fun SubjectsScreen(onBack: () -> Unit) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextSetting("Кратко", s.short, { v -> upd { it.copy(short = v) } }, Modifier.weight(1f))
                             TextSetting("Эмодзи", s.emoji, { v -> upd { it.copy(emoji = v) } }, Modifier.weight(1f))
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextSetting("Учитель", s.teacher, { v -> upd { it.copy(teacher = v) } }, Modifier.weight(2f))
+                            TextSetting("Кабинет", s.room, { v -> upd { it.copy(room = v) } }, Modifier.weight(1f))
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.weight(1f)) { SwitchRow("Напоминать", s.remind, { v -> upd { it.copy(remind = v) } }) }
@@ -401,7 +420,7 @@ fun NowCard(d: AppData) {
         lessons.isEmpty() -> { big = "Сегодня уроков нет"; small = "Выходной" }
         cur != null -> {
             big = "Идёт ${cur.number} урок"
-            small = "${name(cur)} · ${Time.fmt(cur.start!!)}–${Time.fmt(cur.end!!)} · осталось ${dur(cur.end!! - m)}"
+            small = "${name(cur)}${d.subject(cur.subjectId)?.room?.takeIf { it.isNotBlank() }?.let { " · каб. $it" } ?: ""} · ${Time.fmt(cur.start!!)}–${Time.fmt(cur.end!!)} · осталось ${dur(cur.end!! - m)}"
             prog = ((m - cur.start!!) * 60 + sec) / ((cur.end!! - cur.start!!) * 60f)
             if (nextL != null) next = "Потом перемена ${dur(nextL.start!! - cur.end!!)}, дальше ${nextL.number} урок — ${name(nextL)}"
             else next = "Это последний урок 🏁"
@@ -413,7 +432,7 @@ fun NowCard(d: AppData) {
         nextL != null -> {
             val prev = lessons.last { it.end!! <= m }
             big = "Перемена · до звонка ${dur(nextL.start!! - m)}"
-            small = "Дальше ${nextL.number} урок — ${name(nextL)} в ${Time.fmt(nextL.start!!)}"
+            small = "Дальше ${nextL.number} урок — ${name(nextL)} в ${Time.fmt(nextL.start!!)}${d.subject(nextL.subjectId)?.room?.takeIf { it.isNotBlank() }?.let { ", каб. $it" } ?: ""}"
             prog = ((m - prev.end!!) * 60 + sec) / ((nextL.start!! - prev.end!!) * 60f)
             next = "Перемена ${dur(nextL.start!! - prev.end!!)}"
         }
@@ -460,6 +479,7 @@ private fun TodayBells(d: AppData) {
                     color = if (past) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface)
                 if (cur) Text("сейчас", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
+            s?.whereWho()?.let { Text(it, Modifier.padding(start = 124.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline) }
             val n = lessons.getOrNull(i + 1)
             if (n?.start != null && l.end != null) Text("      перемена ${n.start - l.end} мин", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
         }

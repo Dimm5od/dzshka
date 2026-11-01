@@ -14,8 +14,8 @@ android {
         applicationId = "com.ilya.dzshka"
         minSdk = 26
         targetSdk = 35
-        versionCode = 22
-        versionName = "1.9.9"
+        versionCode = 23
+        versionName = "1.9.10"
     }
     // Данные подписи — в keystore.properties (не в git). Файл и .jks есть только на машине сборки.
     val ksProps = Properties().apply {
