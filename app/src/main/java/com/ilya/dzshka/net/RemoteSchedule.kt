@@ -7,6 +7,7 @@ import android.widget.Toast
 import com.ilya.dzshka.data.AppData
 import com.ilya.dzshka.data.Store
 import com.ilya.dzshka.data.Subject
+import com.ilya.dzshka.data.Time
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.Request
@@ -35,8 +36,21 @@ object RemoteSchedule {
     @Serializable
     data class RsDay(val day: Int, val week: Int = -1, val lessons: List<RsLesson> = emptyList())
 
+    /** Звонки: заменить слоты у варианта, который начинается в from (например "08:30"); не нашли — у первого. */
     @Serializable
-    data class RsFile(val rev: Int = 0, val note: String = "", val days: List<RsDay> = emptyList())
+    data class RsBells(val from: String = "", val name: String = "", val slots: List<com.ilya.dzshka.data.Slot> = emptyList())
+
+    @Serializable
+    data class RsFile(
+        val rev: Int = 0,
+        val note: String = "",
+        val days: List<RsDay> = emptyList(),
+        /** звонки идут своей версией, чтобы старые версии приложения их не «съели» */
+        val bellsRev: Int = 0,
+        val bells: List<RsBells> = emptyList(),
+    )
+
+    fun hasNews(d: AppData, f: RsFile) = f.rev > d.remoteSched.rev || (f.bellsRev > d.remoteSched.bellsRev && f.bells.isNotEmpty())
 
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
     private val pool = Executors.newSingleThreadExecutor()
@@ -71,7 +85,16 @@ object RemoteSchedule {
         var weeks = d.weeks
         var created = 0
         val parts = mutableListOf<String>()
-        for (day in f.days) {
+        var bells = d.bells
+        if (f.bellsRev > d.remoteSched.bellsRev) for (b in f.bells) {
+            if (b.slots.isEmpty()) continue
+            val idx = bells.indexOfFirst { p -> b.from.isNotBlank() && p.slots.firstOrNull()?.start?.let(Time::parse) == Time.parse(b.from) }
+                .takeIf { it >= 0 } ?: if (bells.isEmpty()) -1 else 0
+            bells = if (idx < 0) listOf(com.ilya.dzshka.data.BellProfile(name = b.name.ifBlank { "Обычные звонки" }, slots = b.slots))
+            else bells.mapIndexed { i, p -> if (i == idx) p.copy(slots = b.slots, name = b.name.ifBlank { p.name }) else p }
+            parts += "звонки: ${b.slots.size} ур., с ${b.slots.first().start} до ${b.slots.last().end}"
+        }
+        if (f.rev > d.remoteSched.rev) for (day in f.days) {
             if (day.day !in 0..6) continue
             val ids = day.lessons.map { l ->
                 if (l.name.isBlank()) return@map ""
@@ -101,7 +124,8 @@ object RemoteSchedule {
             if (f.note.isNotBlank()) append(" · ").append(f.note)
         }
         val at = java.time.LocalDateTime.now().withNano(0).toString().replace('T', ' ')
-        return d.copy(subjects = subjects, weeks = weeks, remoteSched = d.remoteSched.copy(rev = f.rev, report = report, at = at)) to report
+        return d.copy(subjects = subjects, weeks = weeks, bells = bells, remoteSched = d.remoteSched.copy(
+            rev = maxOf(f.rev, d.remoteSched.rev), bellsRev = maxOf(f.bellsRev, d.remoteSched.bellsRev), report = report, at = at)) to report
     }
 
     /** Проверить GitHub в фоне. force — даже если проверяли недавно (кнопка). */
@@ -113,7 +137,7 @@ object RemoteSchedule {
         pool.execute {
             val msg = runCatching {
                 val f = fetch() ?: return@runCatching "На GitHub нет расписания"
-                if (f.rev <= Store.d.remoteSched.rev) return@runCatching "Новых изменений нет"
+                if (!hasNews(Store.d, f)) return@runCatching "Новых изменений нет"
                 var rep = ""
                 Store.update { d -> apply(d, f).also { rep = it.second }.first }
                 Store.saveNow()

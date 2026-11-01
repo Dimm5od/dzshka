@@ -616,6 +616,7 @@ object Time {
 data class RemoteSchedCfg(
     val enabled: Boolean = true,
     val rev: Int = 0,
+    val bellsRev: Int = 0,
     val report: String = "",
     val at: String = "",
 )

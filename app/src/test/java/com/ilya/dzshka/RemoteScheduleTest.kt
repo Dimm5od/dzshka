@@ -50,6 +50,22 @@ class RemoteScheduleTest {
             d.weeks[0].days[0].lessons.map { id -> d.subjects.first { it.id == id }.name })
     }
 
+    @Test fun bellsFrom0830Replaced() {
+        val other = com.ilya.dzshka.data.BellProfile(name = "Сокращённые", slots = listOf(com.ilya.dzshka.data.Slot("08:00", "08:30")))
+        val main = com.ilya.dzshka.data.BellProfile(name = "Обычные", slots = listOf(com.ilya.dzshka.data.Slot("8:30", "09:15"), com.ilya.dzshka.data.Slot("09:20", "10:05")))
+        val d0 = AppData(bells = listOf(other, main), remoteSched = com.ilya.dzshka.data.RemoteSchedCfg(rev = 2))
+        assertTrue(RemoteSchedule.hasNews(d0, file()))
+        val (d, rep) = RemoteSchedule.apply(d0, file())
+        assertEquals(other, d.bells[0])
+        assertEquals(main.id, d.bells[1].id)
+        assertEquals(7, d.bells[1].slots.size)
+        assertEquals("09:25", d.bells[1].slots[1].start)
+        assertEquals("14:55", d.bells[1].slots[6].end)
+        assertEquals(d0.weeks, d.weeks)            // дни уже были применены — не трогаем
+        assertTrue(rep.contains("звонки"))
+        assertFalse(RemoteSchedule.hasNews(d, file()))
+    }
+
     @Test fun reapplyDoesNotDuplicate() {
         val (d1, _) = RemoteSchedule.apply(AppData(), file())
         val (d2, _) = RemoteSchedule.apply(d1, file())
