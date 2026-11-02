@@ -72,7 +72,7 @@
         <receiver android:name=".net.UpdateReceiver" android:exported="false" />
 
         <!-- Кот: виджет и прогулка по экрану -->
-        <receiver android:name=".mascot.CatWidget" android:exported="true" android:label="Кот ДЗшки">
+        <receiver android:name=".mascot.CatWidget" android:exported="true" android:label="Сейчас урок">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>

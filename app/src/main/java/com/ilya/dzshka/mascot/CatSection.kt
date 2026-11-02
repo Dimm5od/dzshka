@@ -94,18 +94,12 @@ fun CatSection(d: AppData) {
     }
 }
 
-/** Настройки виджета ДЗ: что показывать. Размер меняется на рабочем столе — от 1 клетки. */
+/** Виджет «Сейчас»: какой урок или перемена, сколько осталось. Размер меняется на рабочем столе. */
 @Composable
 fun WidgetSection(d: AppData) {
     val ctx = LocalContext.current
-    val w = d.widget
-    fun upd(f: (com.ilya.dzshka.data.WidgetCfg) -> com.ilya.dzshka.data.WidgetCfg) = Store.update { it.copy(widget = f(it.widget)) }
-    Section("📱 Виджет ДЗ") {
-        Hint("Размер любой: 1 клетка — только сколько ДЗ на завтра, полоска — сколько и по каким предметам, побольше — всё ниже. Растягивай прямо на рабочем столе.")
-        com.ilya.dzshka.ui.SwitchRow("Реплика (текстом)", w.phrase, { v -> upd { it.copy(phrase = v) } }, desc = "Нажми на неё на виджете — новая")
-        com.ilya.dzshka.ui.SwitchRow("ДЗ на завтра — сколько и какое", w.next, { v -> upd { it.copy(next = v) } })
-        com.ilya.dzshka.ui.SwitchRow("Что на сегодня", w.dueToday, { v -> upd { it.copy(dueToday = v) } })
-        com.ilya.dzshka.ui.SwitchRow("Что сегодня задали", w.givenToday, { v -> upd { it.copy(givenToday = v) } })
+    Section("📱 Виджет «Сейчас»") {
+        Hint("Как карточка в «Расписании»: какой идёт урок или перемена, сколько осталось, полоска и что дальше. В 1 клетку — коротко («4 урок · ещё 12 мин»), побольше — полностью. Во время уроков обновляется каждую минуту.")
         OutlinedButton(onClick = {
             val mgr = AppWidgetManager.getInstance(ctx)
             val ok = runCatching { mgr.isRequestPinAppWidgetSupported && mgr.requestPinAppWidget(ComponentName(ctx, CatWidget::class.java), null, null) }.getOrDefault(false)

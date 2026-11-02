@@ -389,51 +389,16 @@ fun HolidaysScreen(onBack: () -> Unit) {
 
 // ---------------- Сейчас: урок или перемена ----------------
 
-private fun dur(min: Int): String = if (min >= 60) "${min / 60} ч ${min % 60} мин" else "$min мин"
 
 /** Что сейчас: какой урок или перемена, сколько осталось, что дальше. Обновляется каждые 15 секунд. */
 @Composable
 fun NowCard(d: AppData) {
     var now by remember { mutableStateOf(java.time.LocalDateTime.now()) }
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(15_000); now = java.time.LocalDateTime.now() } }
-    val today = now.toLocalDate()
     val m = now.hour * 60 + now.minute
-    val sec = now.second
-    val lessons = remember(d, today) { Sched.lessonsOn(d, today).filter { it.start != null && it.end != null } }
-    fun name(l: Lesson) = d.subject(l.subjectId)?.let { listOfNotNull(it.emoji.takeIf { e -> e.isNotBlank() }, it.name).joinToString(" ") } ?: "?"
     val cs = MaterialTheme.colorScheme
-
-    var big = ""; var small = ""; var next = ""; var prog: Float? = null
-    val cur = lessons.firstOrNull { m >= it.start!! && m < it.end!! }
-    val nextL = lessons.firstOrNull { it.start!! > m }
-    when {
-        Sched.isHoliday(d, today) -> { big = "Каникулы 🎉"; small = "Уроков нет" }
-        lessons.isEmpty() -> { big = "Сегодня уроков нет"; small = "Выходной" }
-        cur != null -> {
-            big = "Идёт ${cur.number} урок"
-            small = "${name(cur)} · ${Time.fmt(cur.start!!)}–${Time.fmt(cur.end!!)} · осталось ${dur(cur.end!! - m)}"
-            prog = ((m - cur.start!!) * 60 + sec) / ((cur.end!! - cur.start!!) * 60f)
-            if (nextL != null) next = "Потом перемена ${dur(nextL.start!! - cur.end!!)}, дальше ${nextL.number} урок — ${name(nextL)}"
-            else next = "Это последний урок 🏁"
-        }
-        nextL != null && lessons.first().start!! > m -> {
-            big = "Уроки начнутся в ${Time.fmt(nextL.start!!)}"
-            small = "Через ${dur(nextL.start!! - m)} · ${nextL.number} урок — ${name(nextL)}"
-        }
-        nextL != null -> {
-            val prev = lessons.last { it.end!! <= m }
-            big = "Перемена · до звонка ${dur(nextL.start!! - m)}"
-            small = "Дальше ${nextL.number} урок — ${name(nextL)} в ${Time.fmt(nextL.start!!)}"
-            prog = ((m - prev.end!!) * 60 + sec) / ((nextL.start!! - prev.end!!) * 60f)
-            next = "Перемена ${dur(nextL.start!! - prev.end!!)}"
-        }
-        else -> {
-            big = "Уроки закончились ✅"
-            val nd = Sched.nextSchoolDay(d, today)
-            val first = Sched.lessonsOn(d, nd).firstOrNull { it.start != null }
-            small = if (first != null) "Следующий день: ${prettyDate(d, nd)}, ${first.number} урок в ${Time.fmt(first.start!!)} — ${name(first)}" else ""
-        }
-    }
+    val info = remember(d, now) { NowState.compute(d, now) }
+    val big = info.big; val small = info.small; val next = info.next; val prog = info.prog
     ElevatedCard(
         colors = CardDefaults.elevatedCardColors(containerColor = cs.primaryContainer),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),

@@ -315,7 +315,7 @@ class ScreensTest {
         shot("71_hw_all")
         rule.onNodeWithContentDescription("Назад").performClick()
         rule.onNodeWithText("Настройки").performClick()
-        rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("📱 Виджет ДЗ"))
+        rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("📱 Виджет «Сейчас»"))
         shot("72_settings_cat")
     }
 
@@ -332,14 +332,16 @@ class ScreensTest {
         )))
         val ctx = rule.activity
         val dens = ctx.resources.displayMetrics.density
-        val sizes = listOf(70f to 70f, 250f to 70f, 250f to 140f, 300f to 300f)
+        val sizes = listOf(70f to 70f, 300f to 70f, 340f to 150f, 340f to 200f)
         val W = (sizes.maxOf { it.first } * dens).toInt() + 20; val H = sizes.sumOf { (it.second * dens).toInt() + 10 }
         val out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out).apply { drawColor(0xFF6B8FC7.toInt()) }
         rule.runOnUiThread {
             var y = 0
             for ((w, h) in sizes) {
-                val rv = com.ilya.dzshka.mascot.CatWidget.build(ctx, Store.d, w, h)
+                val f = com.ilya.dzshka.net.RemoteSchedule.parse(File("../tools/schedule/schedule.json").takeIf { it.exists() }?.readText() ?: File("tools/schedule/schedule.json").readText())
+                val wd = com.ilya.dzshka.net.RemoteSchedule.apply(Store.d, f).first
+                val rv = com.ilya.dzshka.mascot.CatWidget.build(ctx, wd, w, h, java.time.LocalDateTime.of(2026, 11, 2, 11, 53))
                 val v = rv.apply(ctx, android.widget.FrameLayout(ctx))
                 val pw = (w * dens).toInt(); val ph = (h * dens).toInt()
                 v.measure(android.view.View.MeasureSpec.makeMeasureSpec(pw, android.view.View.MeasureSpec.EXACTLY), android.view.View.MeasureSpec.makeMeasureSpec(ph, android.view.View.MeasureSpec.EXACTLY))

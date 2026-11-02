@@ -92,6 +92,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         App.visible = true
         if (!BuildConfig.HELPER) runCatching { com.ilya.dzshka.net.RemoteSchedule.check(this) }
+        if (!BuildConfig.HELPER) runCatching { com.ilya.dzshka.mascot.CatWidget.refresh(this) }
     }
 
     override fun onPause() {

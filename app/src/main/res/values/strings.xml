@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="cat_widget_desc">ДЗ на завтра, на сегодня и что задали. Размер — от 1 клетки</string>
+    <string name="cat_widget_desc">Какой сейчас урок или перемена, сколько осталось и что дальше</string>
 </resources>

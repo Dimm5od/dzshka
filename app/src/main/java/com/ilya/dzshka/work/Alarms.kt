@@ -190,6 +190,7 @@ class AlarmReceiver : BroadcastReceiver() {
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         Alarms.reschedule(ctx)
+        runCatching { com.ilya.dzshka.data.Store.init(ctx); com.ilya.dzshka.mascot.CatWidget.refresh(ctx) }
         runCatching { LinkService.sync(ctx) }
         if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) runCatching {
             java.io.File(ctx.cacheDir, "update").deleteRecursively()

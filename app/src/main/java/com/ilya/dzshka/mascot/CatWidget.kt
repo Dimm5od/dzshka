@@ -1,5 +1,6 @@
 package com.ilya.dzshka.mascot
 
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -14,152 +15,139 @@ import android.widget.RemoteViews
 import com.ilya.dzshka.MainActivity
 import com.ilya.dzshka.R
 import com.ilya.dzshka.data.*
-import java.time.LocalDate
+import com.ilya.dzshka.ui.NowState
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 /**
- * Виджет ДЗ (без кота): реплика текстом, ДЗ на завтра (сколько и какое), на сегодня, что сегодня задали.
- * Размер — от 1 клетки (только число) до большого. Что показывать — в Настройках → «Виджет».
+ * Виджет «Сейчас»: какой идёт урок или перемена, сколько осталось, что дальше — как карточка в «Расписании».
+ * Во время учебного дня обновляется каждую минуту (не будя телефон), в остальное время — в полночь.
  * Имя класса прежнее, чтобы уже поставленный виджет не пропал.
  */
 class CatWidget : AppWidgetProvider() {
 
     override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) {
         Store.init(ctx)
-        push(ctx, mgr, ids, null)
+        push(ctx, mgr, ids)
     }
 
     override fun onAppWidgetOptionsChanged(ctx: Context, mgr: AppWidgetManager, id: Int, opts: Bundle) {
         Store.init(ctx)
-        push(ctx, mgr, intArrayOf(id), null)
+        push(ctx, mgr, intArrayOf(id))
+    }
+
+    override fun onDisabled(ctx: Context) {
+        runCatching { (ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(tickIntent(ctx)) }
     }
 
     override fun onReceive(ctx: Context, intent: Intent) {
         super.onReceive(ctx, intent)
-        if (intent.action == ACTION_NEXT) {
+        if (intent.action == ACTION_TICK) {
             Store.init(ctx)
-            val mgr = AppWidgetManager.getInstance(ctx)
-            push(ctx, mgr, mgr.getAppWidgetIds(ComponentName(ctx, CatWidget::class.java)), Mascot.another(Store.d, lastText).text)
+            refresh(ctx)
         }
     }
 
-    data class Info(
-        val next: LocalDate,
-        val nextList: List<HwRecord>,
-        val dueToday: List<HwRecord>,
-        val given: List<HwRecord>,
-    )
-
     companion object {
-        const val ACTION_NEXT = "com.ilya.dzshka.CAT_NEXT"
-        @Volatile private var lastText: String? = null
+        const val ACTION_TICK = "com.ilya.dzshka.WIDGET_TICK"
 
         fun refresh(ctx: Context) {
             val mgr = AppWidgetManager.getInstance(ctx) ?: return
             val ids = mgr.getAppWidgetIds(ComponentName(ctx, CatWidget::class.java))
             if (ids.isEmpty()) return
-            push(ctx, mgr, ids, null)
+            push(ctx, mgr, ids)
         }
-
-        fun info(d: AppData, today: LocalDate = LocalDate.now()): Info {
-            val items = Archive.items(d).map { it.rec }.filter { !it.deleted }
-            fun day(r: HwRecord) = Sched.parseDate(r.due) ?: Sched.parseDate(r.lessonDate)
-            val next = Sched.nextSchoolDay(d, today)
-            return Info(
-                next = next,
-                nextList = items.filter { !it.none && day(it) == next },
-                dueToday = items.filter { !it.none && day(it) == today },
-                given = items.filter { it.lessonDate == today.toString() },
-            )
-        }
-
-        private fun name(d: AppData, r: HwRecord): String {
-            val s = d.subject(r.subjectId)
-            return listOfNotNull(s?.emoji?.takeIf { it.isNotBlank() }, s?.short?.takeIf { it.isNotBlank() } ?: s?.name ?: r.subjectName).joinToString(" ")
-        }
-
-        private fun lines(d: AppData, list: List<HwRecord>, empty: String) =
-            if (list.isEmpty()) empty else list.joinToString("\n") { "${name(d, it)} — ${Archive.label(d, it)}" }
-
-        private fun nextWord(d: AppData, i: Info, today: LocalDate): String =
-            if (i.next == today.plusDays(1)) "завтра" else d.weekdaysShort.getOrElse(i.next.dayOfWeek.value - 1) { "" }
-
-        private fun tiny(ctx: Context, d: AppData, i: Info, today: LocalDate): RemoteViews =
-            RemoteViews(ctx.packageName, R.layout.widget_tiny).apply {
-                setTextViewText(R.id.count, i.nextList.size.toString())
-                setTextViewText(R.id.label, "ДЗ ${nextWord(d, i, today)}")
-                setOnClickPendingIntent(R.id.root, open(ctx))
-            }
-
-        private fun row(ctx: Context, d: AppData, i: Info, today: LocalDate): RemoteViews =
-            RemoteViews(ctx.packageName, R.layout.widget_row).apply {
-                setTextViewText(R.id.count, i.nextList.size.toString())
-                setTextViewText(R.id.label, "ДЗ на ${nextWord(d, i, today)}" +
-                    if (i.nextList.isEmpty()) ": ничего" else ": " + i.nextList.joinToString(", ") { name(d, it) })
-                setOnClickPendingIntent(R.id.root, open(ctx))
-            }
-
-        private fun full(ctx: Context, d: AppData, i: Info, today: LocalDate, phrase: String, big: Boolean): RemoteViews =
-            RemoteViews(ctx.packageName, R.layout.widget_full).apply {
-                val c = d.widget
-                fun show(id: Int, on: Boolean) = setViewVisibility(id, if (on) View.VISIBLE else View.GONE)
-                show(R.id.phrase, c.phrase)
-                setTextViewText(R.id.phrase, phrase)
-                setInt(R.id.phrase, "setMaxLines", if (big) 4 else 2)
-                show(R.id.next_title, c.next); show(R.id.next, c.next)
-                setTextViewText(R.id.next_title, "⏭ На ${nextWord(d, i, today)} · ${i.nextList.size}")
-                setTextViewText(R.id.next, lines(d, i.nextList, "ничего не записано"))
-                setInt(R.id.next, "setMaxLines", if (big) 8 else 3)
-                val todayOn = c.dueToday && (big || i.dueToday.isNotEmpty())
-                show(R.id.today_title, todayOn); show(R.id.today, todayOn)
-                setTextViewText(R.id.today, lines(d, i.dueToday, "ничего"))
-                setInt(R.id.today, "setMaxLines", if (big) 6 else 2)
-                val givenOn = c.givenToday && (big || i.given.isNotEmpty())
-                show(R.id.given_title, givenOn); show(R.id.given, givenOn)
-                setTextViewText(R.id.given, lines(d, i.given, "пока ничего"))
-                setInt(R.id.given, "setMaxLines", if (big) 6 else 2)
-                setOnClickPendingIntent(R.id.root, open(ctx))
-                setOnClickPendingIntent(R.id.phrase, PendingIntent.getBroadcast(ctx, 2,
-                    Intent(ctx, CatWidget::class.java).setAction(ACTION_NEXT), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
-            }
 
         private fun open(ctx: Context) = PendingIntent.getActivity(ctx, 3,
-            Intent(ctx, MainActivity::class.java).setAction(MainActivity.ACTION_HW).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
+        private fun tickIntent(ctx: Context) = PendingIntent.getBroadcast(ctx, 4,
+            Intent(ctx, CatWidget::class.java).setAction(ACTION_TICK),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        private fun RemoteViews.prog(p: Float?) {
+            setViewVisibility(R.id.prog, if (p == null) View.GONE else View.VISIBLE)
+            if (p != null) setProgressBar(R.id.prog, 1000, (p.coerceIn(0f, 1f) * 1000).toInt(), false)
+        }
+
+        private fun small(ctx: Context, i: NowState.Info): RemoteViews =
+            RemoteViews(ctx.packageName, R.layout.widget_now_small).apply {
+                setTextViewText(R.id.line1, i.short1)
+                setTextViewText(R.id.line2, i.short2)
+                setViewVisibility(R.id.line2, if (i.short2.isBlank()) View.GONE else View.VISIBLE)
+                prog(i.prog)
+                setOnClickPendingIntent(R.id.root, open(ctx))
+            }
+
+        /** Полоса в одну клетку высотой: заголовок и строка под ним. */
+        private fun row(ctx: Context, i: NowState.Info): RemoteViews =
+            RemoteViews(ctx.packageName, R.layout.widget_now_small).apply {
+                setTextViewText(R.id.line1, i.big)
+                setTextViewText(R.id.line2, i.line)
+                setViewVisibility(R.id.line2, if (i.line.isBlank()) View.GONE else View.VISIBLE)
+                prog(i.prog)
+                setOnClickPendingIntent(R.id.root, open(ctx))
+            }
+
+        private fun full(ctx: Context, i: NowState.Info, big: Boolean): RemoteViews =
+            RemoteViews(ctx.packageName, R.layout.widget_now).apply {
+                setTextViewText(R.id.big, i.big)
+                setTextViewText(R.id.small, i.small)
+                setViewVisibility(R.id.small, if (i.small.isBlank()) View.GONE else View.VISIBLE)
+                setTextViewText(R.id.next, i.next)
+                setViewVisibility(R.id.next, if (i.next.isBlank()) View.GONE else View.VISIBLE)
+                setInt(R.id.small, "setMaxLines", if (big) 3 else 2)
+                setInt(R.id.next, "setMaxLines", if (big) 2 else 1)
+                prog(i.prog)
+                setOnClickPendingIntent(R.id.root, open(ctx))
+            }
+
         /** Вид под размер (для картинок в тестах и старых Android). */
-        fun build(ctx: Context, d: AppData, wDp: Float, hDp: Float, phrase: String? = null): RemoteViews {
-            val today = LocalDate.now()
-            val i = info(d, today)
-            val p = phrase ?: Mascot.daily(d).text
+        fun build(ctx: Context, d: AppData, wDp: Float, hDp: Float, now: LocalDateTime = LocalDateTime.now()): RemoteViews {
+            val i = NowState.compute(d, now)
             return when {
-                hDp < 100 && wDp < 140 -> tiny(ctx, d, i, today)
-                hDp < 100 -> row(ctx, d, i, today)
-                else -> full(ctx, d, i, today, p, big = hDp >= 220)
+                hDp < 100 && wDp < 160 -> small(ctx, i)
+                hDp < 100 -> row(ctx, i)
+                else -> full(ctx, i, big = hDp >= 180)
             }
         }
 
-        private fun push(ctx: Context, mgr: AppWidgetManager, ids: IntArray, phrase: String?) {
+        private fun push(ctx: Context, mgr: AppWidgetManager, ids: IntArray) {
             if (ids.isEmpty()) return
             val d = Store.d
-            val p = phrase ?: Mascot.daily(d).text
-            lastText = p
+            val now = LocalDateTime.now()
+            val i = NowState.compute(d, now)
             for (id in ids) {
-                val views = if (Build.VERSION.SDK_INT >= 31) {
-                    val today = LocalDate.now()
-                    val i = info(d, today)
-                    RemoteViews(mapOf(
-                        SizeF(40f, 40f) to tiny(ctx, d, i, today),
-                        SizeF(140f, 40f) to row(ctx, d, i, today),
-                        SizeF(140f, 100f) to full(ctx, d, i, today, p, big = false),
-                        SizeF(140f, 220f) to full(ctx, d, i, today, p, big = true),
-                    ))
-                } else {
+                val views = if (Build.VERSION.SDK_INT >= 31) RemoteViews(mapOf(
+                    SizeF(40f, 40f) to small(ctx, i),
+                    SizeF(160f, 40f) to row(ctx, i),
+                    SizeF(160f, 100f) to full(ctx, i, big = false),
+                    SizeF(160f, 180f) to full(ctx, i, big = true),
+                )) else {
                     val o = mgr.getAppWidgetOptions(id)
                     build(ctx, d, o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250).toFloat(),
-                        o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 180).toFloat(), p)
+                        o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 120).toFloat(), now)
                 }
                 runCatching { mgr.updateAppWidget(id, views) }
             }
+            scheduleTick(ctx, i.live, now)
+        }
+
+        /** Следующее обновление: в учебный день — в начале следующей минуты, иначе — после полуночи. */
+        internal fun nextTick(live: Boolean, now: LocalDateTime): LocalDateTime =
+            if (live) now.withSecond(0).withNano(0).plusMinutes(1)
+            else now.toLocalDate().plusDays(1).atStartOfDay().plusSeconds(5)
+
+        private fun scheduleTick(ctx: Context, live: Boolean, now: LocalDateTime) {
+            val ms = nextTick(live, now).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val am = ctx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+            val pi = tickIntent(ctx)
+            // RTC без _WAKEUP: телефон не будим; пока экран выключен — сработает сразу при включении
+            runCatching {
+                if (Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) am.setExact(AlarmManager.RTC, ms, pi)
+                else am.setWindow(AlarmManager.RTC, ms, 30_000, pi)
+            }.onFailure { runCatching { am.set(AlarmManager.RTC, ms, pi) } }
         }
     }
 }
