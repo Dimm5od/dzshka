@@ -28,16 +28,12 @@ class CatWidget : AppWidgetProvider() {
 
     override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) {
         Store.init(ctx)
-        push(ctx, mgr, ids)
+        refresh(ctx)
     }
 
     override fun onAppWidgetOptionsChanged(ctx: Context, mgr: AppWidgetManager, id: Int, opts: Bundle) {
         Store.init(ctx)
-        push(ctx, mgr, intArrayOf(id))
-    }
-
-    override fun onDisabled(ctx: Context) {
-        runCatching { (ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(tickIntent(ctx)) }
+        refresh(ctx)
     }
 
     override fun onReceive(ctx: Context, intent: Intent) {
@@ -51,11 +47,17 @@ class CatWidget : AppWidgetProvider() {
     companion object {
         const val ACTION_TICK = "com.ilya.dzshka.WIDGET_TICK"
 
+        /** Обновить виджеты и уведомление на экране блокировки, назначить следующее обновление. */
         fun refresh(ctx: Context) {
-            val mgr = AppWidgetManager.getInstance(ctx) ?: return
-            val ids = mgr.getAppWidgetIds(ComponentName(ctx, CatWidget::class.java))
-            if (ids.isEmpty()) return
-            push(ctx, mgr, ids)
+            if (com.ilya.dzshka.BuildConfig.HELPER) return
+            val mgr = AppWidgetManager.getInstance(ctx)
+            val ids = mgr?.getAppWidgetIds(ComponentName(ctx, CatWidget::class.java)) ?: IntArray(0)
+            val d = Store.d
+            val now = LocalDateTime.now()
+            val i = NowState.compute(d, now)
+            if (ids.isNotEmpty()) push(ctx, mgr!!, ids, d, i, now)
+            com.ilya.dzshka.work.NowNotif.update(ctx, d, i, now)
+            if (ids.isNotEmpty() || d.widget.lockNotif) scheduleTick(ctx, i.live, now)
         }
 
         private fun open(ctx: Context) = PendingIntent.getActivity(ctx, 3,
@@ -113,11 +115,7 @@ class CatWidget : AppWidgetProvider() {
             }
         }
 
-        private fun push(ctx: Context, mgr: AppWidgetManager, ids: IntArray) {
-            if (ids.isEmpty()) return
-            val d = Store.d
-            val now = LocalDateTime.now()
-            val i = NowState.compute(d, now)
+        private fun push(ctx: Context, mgr: AppWidgetManager, ids: IntArray, d: AppData, i: NowState.Info, now: LocalDateTime) {
             for (id in ids) {
                 val views = if (Build.VERSION.SDK_INT >= 31) RemoteViews(mapOf(
                     SizeF(40f, 40f) to small(ctx, i),
@@ -131,7 +129,6 @@ class CatWidget : AppWidgetProvider() {
                 }
                 runCatching { mgr.updateAppWidget(id, views) }
             }
-            scheduleTick(ctx, i.live, now)
         }
 
         /** Следующее обновление: в учебный день — в начале следующей минуты, иначе — после полуночи. */

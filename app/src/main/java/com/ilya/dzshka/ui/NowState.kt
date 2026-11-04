@@ -18,6 +18,10 @@ object NowState {
         val line: String = small,
         /** идёт учебный день: что-то меняется каждую минуту */
         val live: Boolean = false,
+        /** до какой минуты дня идёт текущее (конец урока / звонок на урок) */
+        val untilMin: Int? = null,
+        /** уроки ещё не начались */
+        val beforeStart: Boolean = false,
     )
 
     fun dur(min: Int): String = if (min >= 60) "${min / 60} ч ${min % 60} мин" else "$min мин"
@@ -42,6 +46,7 @@ object NowState {
                 short2 = dur(cur.end!! - m),
                 line = "${name(cur)} · осталось ${dur(cur.end!! - m)}",
                 live = true,
+                untilMin = cur.end,
             )
             nextL != null && lessons.first().start!! > m -> Info(
                 big = "Уроки начнутся в ${Time.fmt(nextL.start!!)}",
@@ -50,6 +55,8 @@ object NowState {
                 short2 = "через ${dur(nextL.start!! - m)}",
                 line = "Через ${dur(nextL.start!! - m)} — ${name(nextL)}",
                 live = true,
+                untilMin = nextL.start,
+                beforeStart = true,
             )
             nextL != null -> {
                 val prev = lessons.last { it.end!! <= m }
@@ -62,6 +69,7 @@ object NowState {
                     short2 = dur(nextL.start!! - m),
                     line = "Дальше ${nextL.number} урок — ${name(nextL)}",
                     live = true,
+                    untilMin = nextL.start,
                 )
             }
             else -> {

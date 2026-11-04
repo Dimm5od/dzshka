@@ -25,6 +25,17 @@ class NowStateTest {
         assertNotNull(i.prog)
     }
 
+    @Test fun untilForLockNotif() {
+        val i = NowState.compute(data(), LocalDateTime.of(2026, 11, 2, 11, 53))
+        assertEquals(12 * 60 + 5, i.untilMin)
+        assertFalse(i.beforeStart)
+        val early = NowState.compute(data(), LocalDateTime.of(2026, 11, 2, 7, 45))
+        assertTrue(early.beforeStart)
+        assertEquals(8 * 60 + 30, early.untilMin)
+        val after = NowState.compute(data(), LocalDateTime.of(2026, 11, 2, 16, 0))
+        assertNull(after.untilMin)
+    }
+
     @Test fun breakAndAfter() {
         val br = NowState.compute(data(), LocalDateTime.of(2026, 11, 2, 12, 10))
         assertTrue(br.big, br.big.startsWith("Перемена"))

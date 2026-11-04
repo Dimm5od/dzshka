@@ -99,7 +99,11 @@ fun CatSection(d: AppData) {
 fun WidgetSection(d: AppData) {
     val ctx = LocalContext.current
     Section("📱 Виджет «Сейчас»") {
-        Hint("Как карточка в «Расписании»: какой идёт урок или перемена, сколько осталось, полоска и что дальше. В 1 клетку — коротко («4 урок · ещё 12 мин»), побольше — полностью. Во время уроков обновляется каждую минуту.")
+        Hint("Как карточка в «Расписании»: какой идёт урок или перемена, сколько осталось, полоска и что дальше. В 1 клетку — коротко («4 урок · 12 мин»), побольше — полностью. Во время уроков обновляется каждую минуту.")
+        com.ilya.dzshka.ui.SwitchRow("🔒 На заблокированном экране", d.widget.lockNotif, { v ->
+            Store.update { it.copy(widget = it.widget.copy(lockNotif = v)) }
+            CatWidget.refresh(ctx)
+        }, desc = "Тихое уведомление во время уроков: какой урок, отсчёт до звонка и полоска. За час до первого урока появляется, после последнего — исчезает")
         OutlinedButton(onClick = {
             val mgr = AppWidgetManager.getInstance(ctx)
             val ok = runCatching { mgr.isRequestPinAppWidgetSupported && mgr.requestPinAppWidget(ComponentName(ctx, CatWidget::class.java), null, null) }.getOrDefault(false)

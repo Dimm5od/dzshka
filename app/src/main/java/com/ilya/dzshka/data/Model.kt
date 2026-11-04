@@ -298,6 +298,8 @@ data class WidgetCfg(
     val dueToday: Boolean = true,
     val givenToday: Boolean = true,
     val next: Boolean = true,
+    /** «Сейчас» уведомлением на заблокированном экране во время учебного дня */
+    val lockNotif: Boolean = true,
 )
 
 @Serializable
