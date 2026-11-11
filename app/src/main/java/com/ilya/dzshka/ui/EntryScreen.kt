@@ -49,10 +49,13 @@ fun EntryScreen(route: Route.Entry, onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
     val existing = remember(route.key) { route.editId?.let { id -> Store.d.queue.firstOrNull { it.id == id } } }
 
+    // subjectId — урок по расписанию; replaceWith — что было на самом деле (замена), пусто — без замены
     var subjectId by remember(route.key) {
-        mutableStateOf(existing?.subjectId?.takeIf { it.isNotBlank() } ?: route.subjectId?.takeIf { d.subject(it) != null }
-            ?: d.subjects.firstOrNull()?.id ?: OTHER)
+        mutableStateOf(existing?.replaces?.takeIf { it.isNotBlank() } ?: existing?.subjectId?.takeIf { it.isNotBlank() }
+            ?: route.subjectId?.takeIf { d.subject(it) != null } ?: d.subjects.firstOrNull()?.id ?: OTHER)
     }
+    var replaceWith by remember(route.key) { mutableStateOf(if (existing?.replaces?.isNotBlank() == true) existing.subjectId else "") }
+    var replaceOpen by remember(route.key) { mutableStateOf(replaceWith.isNotBlank()) }
     var otherName by remember(route.key) { mutableStateOf(if (existing != null && existing.subjectId.isBlank()) existing.subjectName else "") }
     var lessonDate by remember(route.key) { mutableStateOf(existing?.lessonDate ?: route.date ?: LocalDate.now().toString()) }
     var lessonNum by remember(route.key) { mutableIntStateOf(existing?.lessonNum ?: route.num) }
@@ -71,7 +74,12 @@ fun EntryScreen(route: Route.Entry, onClose: () -> Unit) {
 
     val ld = Sched.parseDate(lessonDate) ?: LocalDate.now()
     val sid = if (subjectId == OTHER) "" else subjectId
-    val due: LocalDate = dueMode?.let { Sched.dueFor(d, it, sid, ld) } ?: Sched.parseDate(customDue) ?: ld
+    // замена возможна только для урока из расписания этого дня и не у помощника
+    val canReplace = !com.ilya.dzshka.link.Link.isHelper && sid.isNotBlank() && Sched.lessonsOn(d, ld).any { it.subjectId == sid }
+    val rid = if (canReplace && replaceOpen && replaceWith.isNotBlank() && replaceWith != sid && d.subject(replaceWith) != null) replaceWith else ""
+    /** предмет, который уйдёт в канал */
+    val pid = rid.ifBlank { sid }
+    val due: LocalDate = dueMode?.let { Sched.dueFor(d, it, pid, ld) } ?: Sched.parseDate(customDue) ?: ld
 
     // если урок выбран из расписания — подставить номер урока
     LaunchedEffect(subjectId, lessonDate) {
@@ -100,11 +108,12 @@ fun EntryScreen(route: Route.Entry, onClose: () -> Unit) {
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { importUris(it) }
 
     fun buildEntry(): HwEntry {
-        val subjName = if (sid.isBlank()) otherName.trim() else d.subject(sid)?.name ?: ""
-        val base = existing ?: Entries.create(d, sid, subjName, ld, lessonNum, "", due = due)
+        val subjName = if (pid.isBlank()) otherName.trim() else d.subject(pid)?.name ?: ""
+        val base = existing ?: Entries.create(d, pid, subjName, ld, lessonNum, "", due = due)
         return base.copy(
-            subjectId = sid,
+            subjectId = pid,
             subjectName = subjName,
+            replaces = if (rid.isNotBlank()) sid else "",
             text = text.text,
             photos = photos.toList(),
             noHw = noHw,
@@ -136,6 +145,7 @@ fun EntryScreen(route: Route.Entry, onClose: () -> Unit) {
             return
         }
         if (existing != null) Store.updateEntry(e.id) { e } else Store.update { it.copy(queue = it.queue + e) }
+        Entries.noteReplace(e, existing)
         if (send) Sender.sendNow(ctx, listOf(e.id))
         newPhotos.clear()
         onClose()
@@ -187,6 +197,23 @@ fun EntryScreen(route: Route.Entry, onClose: () -> Unit) {
                 }
             }
 
+            // Замена: вместо урока по расписанию прошёл другой предмет
+            if (canReplace) {
+                FilterChip(
+                    selected = replaceOpen,
+                    onClick = { replaceOpen = !replaceOpen },
+                    label = { Text("🔁 Замена") },
+                )
+                if (replaceOpen) {
+                    val others = d.subjects.filter { it.id != sid }.map { it.id }
+                    if (replaceWith.isBlank() || replaceWith !in others) others.firstOrNull()?.let { replaceWith = it }
+                    Dropdown("Вместо «${d.subject(sid)?.name ?: "?"}» был", replaceWith, others, { id ->
+                        d.subject(id)?.let { listOf(it.emoji, it.name).filter { s -> s.isNotBlank() }.joinToString(" ") } ?: "?"
+                    }, { replaceWith = it })
+                    Hint("Расписание не меняется. В канал уйдёт так, будто по расписанию сразу был «${d.subject(pid)?.name ?: "?"}», — про замену ни слова.")
+                }
+            }
+
             if (canAnyDay) DateButton(lessonDate, { lessonDate = it }, label = "Когда задали", format = { prettyDate(d, it) })
             else Hint("Задали: ${prettyDate(d, ld)}")
             if (isHelper && Sched.lessonsOn(d, ld).isEmpty() && !canOther) Text("Сегодня уроков нет — присылать нечего.", color = MaterialTheme.colorScheme.error)
@@ -196,7 +223,7 @@ fun EntryScreen(route: Route.Entry, onClose: () -> Unit) {
             if (canDue) Text("На какое число ДЗ", style = MaterialTheme.typography.titleSmall)
             if (canDue) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 DueMode.entries.forEach { m ->
-                    val dt = Sched.dueFor(d, m, sid, ld)
+                    val dt = Sched.dueFor(d, m, pid, ld)
                     FilterChip(
                         selected = dueMode == m,
                         onClick = { dueMode = m },
@@ -217,7 +244,7 @@ fun EntryScreen(route: Route.Entry, onClose: () -> Unit) {
             )
 
             if (canNoHw && (d.reminder.noHwEnabled || noHw)) SwitchRow("Нет ДЗ", noHw, { noHw = it }, desc = "Отправится: «${d.templates.noHw}»")
-            if (sid.isNotBlank() && d.subject(sid)?.noSend == true) Hint("🚫 По этому предмету стоит «не присылать», но записать ДЗ всё равно можно.")
+            if (pid.isNotBlank() && d.subject(pid)?.noSend == true) Hint("🚫 По этому предмету стоит «не присылать», но записать ДЗ всё равно можно.")
             if (!noHw) {
                 OutlinedTextField(
                     value = text,
@@ -277,7 +304,7 @@ fun EntryScreen(route: Route.Entry, onClose: () -> Unit) {
                 if (why != null) Text("⚠ $why", color = MaterialTheme.colorScheme.error)
                 Hint("ДЗ уйдёт ${d.link.mainName.ifBlank { "основному" }}, а он отправит его в канал" + if (d.link.myNeedsApproval) " после проверки." else ".")
             } else Text("Как будет в канале", style = MaterialTheme.typography.titleSmall)
-            val previewPosts = remember(d, subjectId, otherName, text.text, noHw, photos.size, due, lessonNum, lessonDate) {
+            val previewPosts = remember(d, subjectId, pid, otherName, text.text, noHw, photos.size, due, lessonNum, lessonDate) {
                 val m = Studio.nowMoment(d)
                 val e = buildEntry()
                 // если сейчас в студии сообщения идут списком — для одной записи покажем как будет при отправке сейчас

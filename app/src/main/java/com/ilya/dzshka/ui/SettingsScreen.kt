@@ -284,10 +284,14 @@ private fun ChatHwSection(d: AppData) {
     val c = d.chatHw
     fun upd(f: (ChatHwCfg) -> ChatHwCfg) = Store.update { it.copy(chatHw = f(it.chatHw)) }
     var access by remember { mutableStateOf(com.ilya.dzshka.work.ChatListener.hasAccess(ctx)) }
+    var own by remember { mutableStateOf(com.ilya.dzshka.work.ChatReader.hasAccess(ctx)) }
     val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(owner) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
-            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) access = com.ilya.dzshka.work.ChatListener.hasAccess(ctx)
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                access = com.ilya.dzshka.work.ChatListener.hasAccess(ctx)
+                own = com.ilya.dzshka.work.ChatReader.hasAccess(ctx)
+            }
         }
         owner.lifecycle.addObserver(obs)
         onDispose { owner.lifecycle.removeObserver(obs) }
@@ -302,7 +306,15 @@ private fun ChatHwSection(d: AppData) {
             } else Text("✓ Доступ к уведомлениям есть", color = MaterialTheme.colorScheme.primary)
             if (d.viber.channelName.isBlank()) Text("Сначала вставь токен канала и нажми «Проверить токен» — ДЗшка читает именно этот канал.", color = MaterialTheme.colorScheme.error)
             else Text("Читаю канал «${d.viber.channelName}» — тот, чей токен вставлен выше.")
-            Hint("Свои посты Viber тебе уведомлением не показывает — ДЗшка видит посты других админов канала.")
+            SwitchRow("Мои посты тоже", c.readOwn, { v -> upd { it.copy(readOwn = v) } },
+                desc = "О своих постах Viber уведомлений не присылает, поэтому ДЗшка читает их с экрана: открой канал в Viber после поста — и урок отметится. Смотрит только экран этого канала.")
+            if (c.readOwn) {
+                if (!own) {
+                    Text("Нужно включить «ДЗшка: мои посты в канале» в «Спец. возможностях».", color = MaterialTheme.colorScheme.error)
+                    Button(onClick = { com.ilya.dzshka.work.ChatReader.askAccess(ctx) }) { Text("Открыть «Спец. возможности»") }
+                    Hint("Xiaomi: если переключатель серый — Настройки → Приложения → ДЗшка → ⋮ → «Разрешить ограниченные настройки», потом снова сюда.")
+                } else Text("✓ Мои посты читаются, когда открыт канал", color = MaterialTheme.colorScheme.primary)
+            } else Hint("Без этого ДЗшка видит только посты других админов канала (из уведомлений).")
             Hint("Если у канала в Viber выключены уведомления, ДЗшка его не увидит.")
         }
     }

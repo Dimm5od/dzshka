@@ -158,7 +158,7 @@ class ChatListener : NotificationListenerService() {
             for (l in lessons) {
                 val s = d.subject(l.subjectId) ?: continue
                 val key = "$today|${s.id}"
-                if (key in d.fromChat || key in found) continue
+                if (key in d.fromChat || key in found || d.replacedBy(s.id, today.toString()) != null) continue
                 // уже записано в приложении или отправлено — не трогаем
                 if (d.isSent(s.id, today.toString()) || d.queue.any { it.subjectId == s.id && it.lessonDate == today.toString() }) continue
                 for (m in todays) {

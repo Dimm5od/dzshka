@@ -193,7 +193,10 @@ fun HomeScreen(push: (Route) -> Unit) {
 }
 
 @Composable
-private fun LessonRow(d: AppData, l: Lesson, now: LocalDateTime, onClick: () -> Unit) {
+private fun LessonRow(d: AppData, lesson: Lesson, now: LocalDateTime, onClick: () -> Unit) {
+    // замена: показываем то, что было на самом деле, расписание не трогаем
+    val orig = d.subject(lesson.subjectId)
+    val l = d.replacedBy(lesson.subjectId, lesson.date.toString())?.let { lesson.copy(subjectId = it) } ?: lesson
     val s = d.subject(l.subjectId)
     val inQueue = d.queue.firstOrNull { it.subjectId == l.subjectId && it.lessonDate == l.date.toString() }
     val sent = d.isSent(l.subjectId, l.date.toString())
@@ -210,7 +213,8 @@ private fun LessonRow(d: AppData, l: Lesson, now: LocalDateTime, onClick: () -> 
         )
         Column(Modifier.weight(1f)) {
             Text(
-                listOfNotNull(s?.emoji?.takeIf { it.isNotBlank() }, s?.name ?: "?").joinToString(" "),
+                listOfNotNull(s?.emoji?.takeIf { it.isNotBlank() }, s?.name ?: "?").joinToString(" ") +
+                    (if (l !== lesson) " 🔁 вместо ${orig?.name ?: "?"}" else ""),
                 fontWeight = if (isNow) FontWeight.Bold else FontWeight.Normal,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
@@ -233,7 +237,7 @@ private fun LessonRow(d: AppData, l: Lesson, now: LocalDateTime, onClick: () -> 
                 style = MaterialTheme.typography.bodySmall, color = color, maxLines = 3, overflow = TextOverflow.Ellipsis,
             )
         }
-        LessonHwButton(l)
+        LessonHwButton(lesson)
     }
 }
 

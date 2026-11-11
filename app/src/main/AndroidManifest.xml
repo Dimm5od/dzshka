@@ -95,6 +95,17 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+        <!-- «Мои посты»: смотрит только экран канала в Viber, когда пользователь сам включит в «Спец. возможностях» -->
+        <service
+            android:name=".work.ChatReader"
+            android:exported="false"
+            android:label="ДЗшка: мои посты в канале"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/chat_reader" />
+        </service>
         <receiver android:name=".work.BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

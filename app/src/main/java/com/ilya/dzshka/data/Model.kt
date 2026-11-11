@@ -257,6 +257,8 @@ data class HwEntry(
     val author: String = "",
     val helperId: String = "",
     val clientId: String = "",
+    /** «Замена»: какой урок по расписанию заменили (subjectId). В канал уходит как будто по расписанию был subjectId. */
+    val replaces: String = "",
 )
 
 /** Одно ДЗ в архиве. id = "дата урока|предмет" — одинаковый на всех устройствах. */
@@ -319,6 +321,8 @@ data class ChatHwCfg(
     val chat: String = "",
     /** какие чаты встречались в уведомлениях — чтобы выбрать из списка */
     val seen: List<String> = emptyList(),
+    /** читать и свои посты — с экрана канала в Viber (через «Спец. возможности») */
+    val readOwn: Boolean = false,
 )
 
 @Serializable
@@ -374,6 +378,8 @@ data class AppData(
     val sentOnce: Map<String, String> = emptyMap(),
     /** уроки, по которым решили ничего не присылать: "дата|предмет" */
     val skipped: List<String> = emptyList(),
+    /** замены: «дата|предмет по расписанию» → предмет, который был на самом деле */
+    val replaced: Map<String, String> = emptyMap(),
     val channelPosts: List<ChannelPost> = emptyList(),
     val link: LinkCfg = LinkCfg(),
     val helpers: List<Helper> = emptyList(),
@@ -402,6 +408,8 @@ data class AppData(
     val remoteSched: RemoteSchedCfg = RemoteSchedCfg(),
 ) {
     fun isFromChat(subjectId: String, lessonDate: String) = "$lessonDate|$subjectId" in fromChat
+    /** Чем заменили урок (null — замены не было). */
+    fun replacedBy(subjectId: String, lessonDate: String): String? = replaced["$lessonDate|$subjectId"]
     val testReady get() = testViber.token.isNotBlank() && testViber.fromId.isNotBlank()
     fun isSkipped(subjectId: String, lessonDate: String) = "$lessonDate|$subjectId" in skipped
     fun isSent(subjectId: String, lessonDate: String) = "$lessonDate|$subjectId" in sentKeys

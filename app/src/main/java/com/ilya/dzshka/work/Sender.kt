@@ -60,7 +60,18 @@ object Entries {
         Store.update { d -> d.copy(hwLog = (d.hwLog - key + (key to text)).entries.toList().takeLast(200).associate { it.toPair() }) }
     }
 
+    /** Запомнить замену урока (или убрать старую, если запись поменяли). */
+    fun noteReplace(e: HwEntry, old: HwEntry? = null) {
+        Store.update { d ->
+            var r = d.replaced
+            if (old != null && old.replaces.isNotBlank()) r = r - "${old.lessonDate}|${old.replaces}"
+            if (e.replaces.isNotBlank() && e.subjectId.isNotBlank()) r = r + ("${e.lessonDate}|${e.replaces}" to e.subjectId)
+            d.copy(replaced = r.entries.toList().takeLast(200).associate { it.toPair() })
+        }
+    }
+
     fun addAndMaybeSend(ctx: Context, e: HwEntry) {
+        noteReplace(e)
         logHw(e, if (e.noHw) Store.d.templates.noHw else e.text.ifBlank { if (e.photos.isNotEmpty()) "📷 фото" else "" })
         if (com.ilya.dzshka.link.Link.isHelper) { com.ilya.dzshka.link.HelperLink.submit(ctx, e); return }
         Store.update { it.copy(queue = it.queue + e) }

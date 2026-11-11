@@ -221,6 +221,8 @@ fun PopupCard(
                     } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         buttons.forEachIndexed { i, b -> Btn(b, i == 0, Modifier.weight(1f)) }
                     }
+                    // полная страница записи: фото, своя дата, замена урока
+                    if (!test) TextButton(onClick = onOpen, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("⚙ Расширенные…") }
                 }
             }
         }

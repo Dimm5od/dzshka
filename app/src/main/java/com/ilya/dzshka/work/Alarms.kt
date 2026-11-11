@@ -108,7 +108,7 @@ class AlarmReceiver : BroadcastReceiver() {
             ACTION_REMIND -> {
                 val already = Store.d.queue.any { it.subjectId == subject && it.lessonDate == date.toString() } ||
                     Store.d.isSent(subject, date.toString()) || Store.d.isSkipped(subject, date.toString()) ||
-                    Store.d.isFromChat(subject, date.toString())
+                    Store.d.isFromChat(subject, date.toString()) || Store.d.replacedBy(subject, date.toString()) != null
                 if (!already) Notif.remind(ctx, date, index, num, subject)
                 Alarms.reschedule(ctx)
                 if (com.ilya.dzshka.link.Link.isHelper) LinkPollWorker.now(ctx)

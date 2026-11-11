@@ -80,3 +80,34 @@ class ChatHwTest {
         Store.update { it.copy(chatHw = it.chatHw.copy(enabled = false), fromChat = emptyMap()) }
     }
 }
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class ReplaceTest {
+    @Test fun replacementPostsOtherSubjectScheduleUntouched() {
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        Store.init(ctx)
+        val days = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс").joinToString("\n") { "$it: Математика, Химия" }
+        val base = Sched.importText(AppData(), days, 0).data
+        val bio = Subject(name = "Биология")
+        Store.replaceAll(base.copy(subjects = base.subjects + bio, chatHw = ChatHwCfg(enabled = true), viber = ViberCfg(channelName = "ДЗ 7-Б")))
+        val m = Store.d.subjects.first { it.name == "Математика" }
+        val today = LocalDate.now()
+        val weeksBefore = Store.d.weeks
+        val e = com.ilya.dzshka.work.Entries.create(Store.d, bio.id, "", today, 1, "§5").copy(replaces = m.id)
+        com.ilya.dzshka.work.Entries.addAndMaybeSend(ctx, e)
+        assertEquals(bio.id, Store.d.replacedBy(m.id, today.toString()))
+        assertEquals(weeksBefore, Store.d.weeks)
+        // в канал — как будто по расписанию была биология, без слова «замена»
+        val c = Builder.ctx(Store.d, e)
+        assertEquals("Биология", c.subject?.name)
+        assertEquals(1, c.lessonNum)
+        val post = Studio.plan(Store.d, Studio.nowMoment(Store.d).steps, listOf(e), today, emptyMap())
+            .filterIsInstance<Post.Text>().joinToString("\n") { it.text }
+        assertTrue(post, post.contains("Биология"))
+        assertFalse(post, post.lowercase().contains("замен") || post.contains("Математика"))
+        // сообщение в канале про математику больше не отмечает заменённый урок
+        ChatListener.handle(ctx, listOf("ДЗ 7-Б"), listOf("Математика №1" to System.currentTimeMillis()))
+        assertFalse(Store.d.isFromChat(m.id, today.toString()))
+    }
+}
