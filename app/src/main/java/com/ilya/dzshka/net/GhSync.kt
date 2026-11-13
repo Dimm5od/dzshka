@@ -98,6 +98,40 @@ object GhSync {
 
     private class Conflict : IOException("конфликт версий")
 
+    const val PHOTO_BRANCH = "photos"
+
+    /**
+     * Фото для канала — в тот же репозиторий, отдельная ветка photos (чтобы не раздувать main).
+     * Ссылка raw.githubusercontent.com не протухает, пока файл лежит в репозитории.
+     */
+    fun uploadPhoto(g: GhCfg, file: java.io.File): String {
+        if (g.token.isBlank()) throw IOException("Для фото на GitHub нужен токен (Настройки → ДЗ на GitHub)")
+        val month = java.time.LocalDate.now().toString().take(7)
+        val path = "photos/$month/${file.name}"
+        val base = "$api/repos/${g.owner.trim()}/${g.repo.trim()}"
+        val body = buildJsonObject {
+            put("message", "фото $month")
+            put("content", Base64.encodeToString(file.readBytes(), Base64.NO_WRAP))
+            put("branch", PHOTO_BRANCH)
+        }.toString()
+        fun put(): Pair<Int, String> = Viber.http.newCall(req(g, "$base/contents/$path").put(body.toRequestBody(JSON_TYPE)).build()).execute()
+            .use { it.code to it.body?.string().orEmpty() }
+        var (code, text) = put()
+        if (code == 404 || code == 422 && text.contains("branch", ignoreCase = true)) {
+            // ветки ещё нет — создаём от main
+            val ref = Viber.http.newCall(req(g, "$base/git/ref/heads/${g.branch.trim()}").build()).execute().use { it.body?.string().orEmpty() }
+            val sha = runCatching { Json.parseToJsonElement(ref).jsonObject["object"]!!.jsonObject["sha"]!!.jsonPrimitive.content }.getOrNull()
+                ?: throw IOException("GitHub: не нашёл ветку ${g.branch}")
+            val mk = buildJsonObject { put("ref", "refs/heads/$PHOTO_BRANCH"); put("sha", sha) }.toString()
+            Viber.http.newCall(req(g, "$base/git/refs").post(mk.toRequestBody(JSON_TYPE)).build()).execute().close()
+            put().let { code = it.first; text = it.second }
+        }
+        if (code == 401) throw IOException("GitHub: токен не подходит (401)")
+        if (code == 403 || code == 404) throw IOException("GitHub: у токена нет права записи в ${g.owner}/${g.repo} ($code)")
+        if (code !in 200..299) throw IOException("GitHub не сохранил фото ($code): ${text.take(150)}")
+        return "https://raw.githubusercontent.com/${g.owner.trim()}/${g.repo.trim()}/$PHOTO_BRANCH/$path"
+    }
+
     /** Забрать с GitHub, слить с телефоном, отправить обратно (если есть токен). @return что сделано */
     fun sync(): String {
         val g = Store.d.gh

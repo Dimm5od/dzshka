@@ -76,8 +76,35 @@ object Images {
 object Uploader {
     private val JPEG = "image/jpeg".toMediaType()
 
-    fun upload(file: File, cfg: PhotoCfg): String {
+    /**
+     * Загрузить на выбранный хостинг; если не вышло — на запасной (GitHub, если есть токен, потом catbox).
+     * @return ссылка
+     */
+    fun uploadAny(file: File, cfg: PhotoCfg, gh: com.ilya.dzshka.data.GhCfg = com.ilya.dzshka.data.Store.d.gh): String {
+        val order = (listOf(cfg.hosting) +
+            (if (gh.token.isNotBlank()) listOf(Hosting.GITHUB) else emptyList()) + Hosting.CATBOX).distinct()
+        var first: Exception? = null
+        for (h in order) {
+            try { return upload(file, cfg.copy(hosting = h), gh) } catch (e: Exception) { if (first == null) first = e }
+        }
+        throw (first as? IOException) ?: IOException(first?.message ?: "фото не загрузилось")
+    }
+
+    /** Открывается ли ссылка с этого телефона: null — да, иначе почему нет. */
+    fun check(url: String): String? = runCatching {
+        Viber.http.newCall(Request.Builder().url(url).header("User-Agent", "Mozilla/5.0").get().build()).execute().use { r ->
+            when {
+                r.code == 404 || r.code == 410 -> "удалено хостингом (${r.code})"
+                !r.isSuccessful -> "хостинг ответил ${r.code}"
+                (r.body?.contentLength() ?: -1L) == 0L -> "пустой файл"
+                else -> null
+            }
+        }
+    }.getOrElse { "не открывается: " + (Viber.netError(it) ?: it.message ?: it.javaClass.simpleName) }
+
+    fun upload(file: File, cfg: PhotoCfg, gh: com.ilya.dzshka.data.GhCfg = com.ilya.dzshka.data.Store.d.gh): String {
         val url = when (cfg.hosting) {
+            Hosting.GITHUB -> GhSync.uploadPhoto(gh, file)
             Hosting.CATBOX -> multipart(
                 "https://catbox.moe/user/api.php",
                 mapOf("reqtype" to "fileupload") + (if (cfg.catboxUserhash.isNotBlank()) mapOf("userhash" to cfg.catboxUserhash.trim()) else emptyMap()),

@@ -40,7 +40,7 @@ class HelperSendWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, par
                 if (Store.d.queue.first { it.id == id }.uploaded.containsKey(f)) continue
                 val file = File(Store.photosDir(), f)
                 if (!file.exists()) continue
-                val url = Uploader.upload(file, Store.d.photo)
+                val url = Uploader.uploadAny(file, Store.d.photo)
                 Store.updateEntry(id) { it.copy(uploaded = it.uploaded + (f to url)) }
             }
             val e = Store.d.queue.first { it.id == id }

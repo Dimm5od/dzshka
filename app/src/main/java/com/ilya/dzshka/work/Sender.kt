@@ -60,6 +60,11 @@ object Entries {
         Store.update { d -> d.copy(hwLog = (d.hwLog - key + (key to text)).entries.toList().takeLast(200).associate { it.toPair() }) }
     }
 
+    /** Урок больше не «не задали» (записали ДЗ по нему). */
+    fun unskipKey(key: String) {
+        if (key in Store.d.skipped) Store.update { it.copy(skipped = it.skipped - key) }
+    }
+
     /** Запомнить замену урока (или убрать старую, если запись поменяли). */
     fun noteReplace(e: HwEntry, old: HwEntry? = null) {
         Store.update { d ->
@@ -72,6 +77,7 @@ object Entries {
 
     fun addAndMaybeSend(ctx: Context, e: HwEntry) {
         noteReplace(e)
+        unskipKey("${e.lessonDate}|${e.subjectId}")
         logHw(e, if (e.noHw) Store.d.templates.noHw else e.text.ifBlank { if (e.photos.isNotEmpty()) "📷 фото" else "" })
         if (com.ilya.dzshka.link.Link.isHelper) { com.ilya.dzshka.link.HelperLink.submit(ctx, e); return }
         Store.update { it.copy(queue = it.queue + e) }
@@ -264,7 +270,7 @@ object Sender {
                                 Store.addHistory(SentRecord(text = "${e.subjectName}: фото не найдено на телефоне, пропущено", ok = false, error = p.file))
                                 null
                             } else {
-                            val u = try { Uploader.upload(f, Store.d.photo) } catch (x: IOException) {
+                            val u = try { Uploader.uploadAny(f, Store.d.photo) } catch (x: IOException) {
                                 throw IOException("Фото не загрузилось на ${Store.d.photo.hosting.label.substringBefore(" ")} (${f.length() / 1024} КБ): ${x.message}", x)
                             }
                             if (!test) Store.updateEntry(e.id) { it.copy(uploaded = it.uploaded + (p.file to u)) }
@@ -300,6 +306,13 @@ object Sender {
             if (entries.isNotEmpty()) Store.update { it.copy(mascot = it.mascot.copy(event = "hwSent", eventAt = System.currentTimeMillis())) }
             val keys = entries.map { "${it.lessonDate}|${it.subjectId}" }
             Store.update { s -> s.copy(sentKeys = (keys + s.sentKeys).distinct().take(300)) }
+            // отправили ДЗ — значит урок не «не задали»: обновить текст у урока и снять отметку
+            Store.update { s ->
+                val log = s.hwLog + entries.map { e ->
+                    "${e.lessonDate}|${e.subjectId}" to (if (e.noHw) s.templates.noHw else e.text.ifBlank { if (e.photos.isNotEmpty()) "📷 фото" else "" })
+                }
+                s.copy(hwLog = log.entries.toList().takeLast(200).associate { it.toPair() }, skipped = s.skipped - keys.toSet())
+            }
             runCatching { com.ilya.dzshka.link.MainLink.onSent(entries) }
             ids.forEach { Store.removeEntry(it, Store.d.send.deleteSentPhotos) }
             Store.saveNow()

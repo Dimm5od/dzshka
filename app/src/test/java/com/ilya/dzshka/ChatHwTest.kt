@@ -111,3 +111,24 @@ class ReplaceTest {
         assertFalse(Store.d.isFromChat(m.id, today.toString()))
     }
 }
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class SkipThenSendTest {
+    @Test fun sendingAfterSkipClearsNotGiven() {
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        Store.init(ctx)
+        val days = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс").joinToString("\n") { "$it: Математика, Химия" }
+        Store.replaceAll(Sched.importText(AppData(), days, 0).data)
+        val m = Store.d.subjects.first { it.name == "Математика" }
+        val today = LocalDate.now()
+        val key = "$today|${m.id}"
+        com.ilya.dzshka.work.Entries.skip(m.id, today)
+        assertEquals("не задали", Store.d.hwLog[key])
+        assertTrue(key in Store.d.skipped)
+        val e = com.ilya.dzshka.work.Entries.create(Store.d, m.id, "", today, 1, "№5")
+        com.ilya.dzshka.work.Entries.addAndMaybeSend(ctx, e)
+        assertFalse(key in Store.d.skipped)
+        assertEquals("№5", Store.d.hwLog[key])
+    }
+}

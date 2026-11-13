@@ -107,6 +107,7 @@ enum class Hosting(val label: String) {
     LITTERBOX("litterbox — без ключа, удаляется через 1–72 ч"),
     IMGBB("imgbb.com — нужен бесплатный ключ"),
     CUSTOM("Свой сервер"),
+    GITHUB("GitHub — хранится всегда, нужен токен (ниже, «ДЗ на GitHub»)"),
 }
 
 enum class ThemeMode(val label: String) { SYSTEM("Как в системе"), LIGHT("Светлая"), DARK("Тёмная") }

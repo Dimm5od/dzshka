@@ -146,6 +146,8 @@ fun EntryScreen(route: Route.Entry, onClose: () -> Unit) {
         }
         if (existing != null) Store.updateEntry(e.id) { e } else Store.update { it.copy(queue = it.queue + e) }
         Entries.noteReplace(e, existing)
+        Entries.unskipKey("${e.lessonDate}|${e.subjectId}")
+        Entries.logHw(e, if (e.noHw) d.templates.noHw else e.text.ifBlank { if (e.photos.isNotEmpty()) "📷 фото" else "" })
         if (send) Sender.sendNow(ctx, listOf(e.id))
         newPhotos.clear()
         onClose()
