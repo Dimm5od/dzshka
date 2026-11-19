@@ -189,9 +189,10 @@ private fun PhotoSection(d: AppData) {
         Hint("Viber берёт картинку только по ссылке, поэтому фото сначала загружается на хостинг.")
         Dropdown("Куда загружать", p.hosting, Hosting.entries, { it.label }, { v -> upd { it.copy(hosting = v) } })
         when (p.hosting) {
+            Hosting.FREEIMAGE -> Hint("Без ключа и регистрации, фото хранятся без срока.")
             Hosting.CATBOX -> TextSetting("userhash (необязательно)", p.catboxUserhash, { v -> upd { it.copy(catboxUserhash = v) } }, hint = "Если есть аккаунт catbox — фото будут в нём")
             Hosting.LITTERBOX -> Dropdown("Сколько хранить", p.litterTime, listOf("1h", "12h", "24h", "72h"), { it }, { v -> upd { it.copy(litterTime = v) } })
-            Hosting.GITHUB -> if (d.gh.token.isBlank()) Text("Нужен токен GitHub — вставь его ниже в «☁ ДЗ на GitHub». Пока его нет, фото пойдут на catbox.", color = MaterialTheme.colorScheme.error)
+            Hosting.GITHUB -> if (d.gh.token.isBlank()) Text("Нужен токен GitHub — вставь его ниже в «☁ ДЗ на GitHub». Пока его нет, фото пойдут на freeimage.host.", color = MaterialTheme.colorScheme.error)
                 else Hint("Фото кладутся в ${d.gh.owner}/${d.gh.repo}, ветка «photos». Ссылки не протухают.")
             Hosting.IMGBB -> TextSetting("Ключ imgbb", p.imgbbKey, { v -> upd { it.copy(imgbbKey = v.trim()) } }, hint = "Бесплатно: api.imgbb.com → Get API key")
             Hosting.CUSTOM -> {
@@ -231,7 +232,7 @@ private fun PhotoSection(d: AppData) {
                     val bad = urls.mapNotNull { u -> Uploader.check(u)?.let { u to it } }
                     if (bad.isEmpty()) "✓ Все ${urls.size} последних фото открываются с этого телефона"
                     else "✗ Не открываются ${bad.size} из ${urls.size}:\n" + bad.take(5).joinToString("\n") { (u, why) -> "• ${u.substringAfter("://").take(45)} — $why" } +
-                        "\nСовет: выбери «GitHub» или «imgbb» — там фото хранятся надёжнее."
+                        "\nСовет: выбери «freeimage.host» или «GitHub» — там фото хранятся надёжнее."
                 }
             }
         }) { Text("Проверить фото в канале") }

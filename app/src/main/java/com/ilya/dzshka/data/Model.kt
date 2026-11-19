@@ -103,7 +103,8 @@ enum class DueMode(val label: String) {
 }
 
 enum class Hosting(val label: String) {
-    CATBOX("catbox.moe — без ключа, хранится всегда"),
+    FREEIMAGE("freeimage.host — без ключа, хранится всегда (советую)"),
+    CATBOX("catbox.moe — без ключа, но фото часто пропадают"),
     LITTERBOX("litterbox — без ключа, удаляется через 1–72 ч"),
     IMGBB("imgbb.com — нужен бесплатный ключ"),
     CUSTOM("Свой сервер"),
@@ -125,7 +126,7 @@ data class ViberCfg(
 
 @Serializable
 data class PhotoCfg(
-    val hosting: Hosting = Hosting.CATBOX,
+    val hosting: Hosting = Hosting.FREEIMAGE,
     val imgbbKey: String = "",
     val catboxUserhash: String = "",
     val litterTime: String = "72h",
@@ -347,7 +348,7 @@ data class SentRecord(
 
 @Serializable
 data class AppData(
-    val version: Int = 8,
+    val version: Int = 9,
     val setupDone: Boolean = false,
     val subjects: List<Subject> = emptyList(),
     val bells: List<BellProfile> = listOf(Defaults.bells()),

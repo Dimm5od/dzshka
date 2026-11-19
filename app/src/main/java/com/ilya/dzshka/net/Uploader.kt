@@ -74,6 +74,7 @@ object Images {
 }
 
 object Uploader {
+    const val FREEIMAGE_KEY = "6d207e02198a847aa98d0a2a901485a5"
     private val JPEG = "image/jpeg".toMediaType()
 
     /**
@@ -82,7 +83,7 @@ object Uploader {
      */
     fun uploadAny(file: File, cfg: PhotoCfg, gh: com.ilya.dzshka.data.GhCfg = com.ilya.dzshka.data.Store.d.gh): String {
         val order = (listOf(cfg.hosting) +
-            (if (gh.token.isNotBlank()) listOf(Hosting.GITHUB) else emptyList()) + Hosting.CATBOX).distinct()
+            (if (gh.token.isNotBlank()) listOf(Hosting.GITHUB) else emptyList()) + Hosting.FREEIMAGE + Hosting.CATBOX).distinct()
         var first: Exception? = null
         for (h in order) {
             try { return upload(file, cfg.copy(hosting = h), gh) } catch (e: Exception) { if (first == null) first = e }
@@ -105,6 +106,12 @@ object Uploader {
     fun upload(file: File, cfg: PhotoCfg, gh: com.ilya.dzshka.data.GhCfg = com.ilya.dzshka.data.Store.d.gh): String {
         val url = when (cfg.hosting) {
             Hosting.GITHUB -> GhSync.uploadPhoto(gh, file)
+            Hosting.FREEIMAGE -> {
+                // публичный ключ freeimage.host (со страницы их API), файлы без срока хранения
+                val body = multipart("https://freeimage.host/api/1/upload",
+                    mapOf("key" to FREEIMAGE_KEY, "action" to "upload", "format" to "json"), "source", file, emptyMap())
+                jsonPath(body, "image.url") ?: throw IOException("freeimage.host не вернул ссылку: ${body.take(200)}")
+            }
             Hosting.CATBOX -> multipart(
                 "https://catbox.moe/user/api.php",
                 mapOf("reqtype" to "fileupload") + (if (cfg.catboxUserhash.isNotBlank()) mapOf("userhash" to cfg.catboxUserhash.trim()) else emptyMap()),

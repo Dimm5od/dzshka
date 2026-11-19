@@ -63,6 +63,9 @@ object Store {
             migrated = migrated.copy(version = 8, archive = Archive.merge(migrated.archive, seed),
                 gh = migrated.gh.copy(dirty = migrated.gh.dirty || seed.isNotEmpty()))
         }
+        // v9: catbox терял фото в канале — переводим на freeimage.host
+        if (migrated.version < 9) migrated = migrated.copy(version = 9,
+            photo = if (migrated.photo.hosting == Hosting.CATBOX) migrated.photo.copy(hosting = Hosting.FREEIMAGE) else migrated.photo)
         // Если отправка оборвалась (приложение убили) — вернуть в очередь
         _data.value = migrated.copy(queue = migrated.queue.map {
             if (it.status == EntryStatus.SENDING) it.copy(status = EntryStatus.QUEUED) else it
